@@ -1,0 +1,38 @@
+name: player
+description: Local audio player for Android with background playback.
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.2.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  provider: 6.1.5+1
+  just_audio: 0.9.42
+  audio_service: 0.18.16
+  audio_session: 0.1.21
+  sqflite: 2.3.2
+  path: 1.8.3
+  file_picker: 8.0.0+1
+  permission_handler: 11.3.1
+  on_audio_query: 2.9.0
+  device_info_plus: 9.1.2
+  collection: 1.18.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: 3.0.2
+
+flutter:
+  uses-material-design: true
+
+dependency_overrides:
+  file_picker:
+    path: third_party/file_picker
+  flutter_plugin_android_lifecycle:
+    path: third_party/flutter_plugin_android_lifecycle
+  on_audio_query_android:
+    path: third_party/on_audio_query_android
