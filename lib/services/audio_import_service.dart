@@ -62,7 +62,10 @@ class AudioImportService {
   final OnAudioQuery _audioQuery;
   static const _extensions = <String>{'mp3', 'm4a', 'flac', 'wav', 'aac', 'ogg'};
 
-  Future<ImportResult> autoScan({bool Function()? isCancelled}) async {
+  Future<ImportResult> autoScan({
+    bool Function()? isCancelled,
+    int minDurationMs = 0,
+  }) async {
     try {
       final permission = await requestScanPermissions();
       if (!permission.scanAvailable) {
@@ -95,14 +98,18 @@ class AudioImportService {
       }
 
       final tracks = songs
-          .where((song) => song.data.isNotEmpty)
+          .where(
+            (song) => song.data.isNotEmpty && _passesMinDuration(song.duration, minDurationMs),
+          )
           .map(_songToTrack)
           .toList(growable: false);
 
       if (tracks.isEmpty) {
-        return const ImportResult(
+        return ImportResult(
           type: ImportActionType.autoScan,
-          message: '扫描完成，未发现音频文件。',
+          message: minDurationMs > 0
+              ? '扫描完成，未发现符合时长条件的音频文件。'
+              : '扫描完成，未发现音频文件。',
         );
       }
       return ImportResult(
@@ -122,6 +129,7 @@ class AudioImportService {
   Future<ImportResult> pickFolderAndScan({
     bool Function()? isCancelled,
     void Function(ScanProgress progress)? onProgress,
+    int minDurationMs = 0,
   }) async {
     try {
       final folderPath = await FilePicker.platform.getDirectoryPath(lockParentWindow: true);
@@ -142,6 +150,7 @@ class AudioImportService {
         );
       }
 
+      final knownDurations = await _loadKnownDurations();
       var processedCount = 0;
       final tracks = <AudioTrack>[];
       await for (final entity in dir.list(recursive: true, followLinks: false)) {
@@ -170,7 +179,10 @@ class AudioImportService {
 
         final ext = p.extension(entity.path).replaceAll('.', '').toLowerCase();
         if (_extensions.contains(ext)) {
-          tracks.add(_fileToTrack(entity.path));
+          final durationMs = knownDurations[_normalizePath(entity.path)] ?? 0;
+          if (_passesManualImportFilter(durationMs, minDurationMs)) {
+            tracks.add(_fileToTrack(entity.path, durationMs: durationMs));
+          }
         }
 
         if (processedCount % 20 == 0) {
@@ -185,9 +197,11 @@ class AudioImportService {
       }
 
       if (tracks.isEmpty) {
-        return const ImportResult(
+        return ImportResult(
           type: ImportActionType.pickFolder,
-          message: '该文件夹中未发现支持的音频格式。',
+          message: minDurationMs > 0
+              ? '该文件夹中未发现符合时长条件的可用音频文件。'
+              : '该文件夹中未发现可用的音频文件。',
         );
       }
       return ImportResult(
@@ -204,7 +218,7 @@ class AudioImportService {
     }
   }
 
-  Future<ImportResult> pickFiles() async {
+  Future<ImportResult> pickFiles({int minDurationMs = 0}) async {
     try {
       final result = await FilePicker.platform.pickFiles(
         allowMultiple: true,
@@ -222,15 +236,23 @@ class AudioImportService {
         );
       }
 
+      final knownDurations = await _loadKnownDurations();
       final tracks = result.files
           .where((file) => file.path != null)
-          .map((file) => _fileToTrack(file.path!))
+          .map((file) {
+            final path = file.path!;
+            final durationMs = knownDurations[_normalizePath(path)] ?? 0;
+            return _fileToTrack(path, durationMs: durationMs);
+          })
+          .where((track) => _passesManualImportFilter(track.durationMs, minDurationMs))
           .toList(growable: false);
 
       if (tracks.isEmpty) {
-        return const ImportResult(
+        return ImportResult(
           type: ImportActionType.pickFiles,
-          message: '未选中可用的音频文件。',
+          message: minDurationMs > 0
+              ? '未选中符合时长条件的可用音频文件。'
+              : '未选中可用的音频文件。',
         );
       }
       return ImportResult(
@@ -258,17 +280,48 @@ class AudioImportService {
     );
   }
 
-  AudioTrack _fileToTrack(String path) {
+  AudioTrack _fileToTrack(String path, {int durationMs = 0}) {
     final title = p.basenameWithoutExtension(path);
     return AudioTrack(
       path: path,
       title: title,
       artist: 'Unknown',
       album: 'Unknown',
-      durationMs: 0,
+      durationMs: durationMs,
       artUri: null,
     );
   }
+
+  bool _passesMinDuration(int? durationMs, int minDurationMs) {
+    final value = durationMs ?? 0;
+    if (value <= 0) return false;
+    return value >= minDurationMs;
+  }
+
+  bool _passesManualImportFilter(int durationMs, int minDurationMs) {
+    if (durationMs <= 0) return false;
+    return durationMs >= minDurationMs;
+  }
+
+  Future<Map<String, int>> _loadKnownDurations() async {
+    try {
+      final songs = await _audioQuery.querySongs(
+        sortType: SongSortType.TITLE,
+        orderType: OrderType.ASC_OR_SMALLER,
+        uriType: UriType.EXTERNAL,
+        ignoreCase: true,
+      );
+      return {
+        for (final song in songs)
+          if (song.data.isNotEmpty && (song.duration ?? 0) > 0)
+            _normalizePath(song.data): song.duration!,
+      };
+    } catch (_) {
+      return const <String, int>{};
+    }
+  }
+
+  String _normalizePath(String path) => p.normalize(path).toLowerCase();
 
   Future<PermissionGuideState> getPermissionGuideState() async {
     final android = await DeviceInfoPlugin().androidInfo;

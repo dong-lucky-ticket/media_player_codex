@@ -272,6 +272,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
               final isLast = entry.key == group.tracks.length - 1;
               final serial = trackOrder[track.path] ?? 0;
               final isCurrent = controller.currentMediaItem?.id == track.path;
+              final isUnplayable = controller.isTrackUnplayable(track.path);
               return Padding(
                 padding: EdgeInsets.only(bottom: isLast ? 0 : 8),
                 child: Dismissible(
@@ -285,6 +286,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                     track: track,
                     index: serial,
                     isCurrent: isCurrent,
+                    isUnplayable: isUnplayable,
                     onTap: () => controller.playTrackAt(serial - 1),
                     onLongPress: () =>
                         _showTrackDetailsDialog(context, track, serial),
@@ -439,6 +441,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
     required AudioTrack track,
     required int index,
     required bool isCurrent,
+    required bool isUnplayable,
     required VoidCallback onTap,
     required VoidCallback onLongPress,
     required VoidCallback onRemove,
@@ -500,6 +503,29 @@ class _LibraryScreenState extends State<LibraryScreen> {
                           ),
                         ),
                       ),
+                      if (isUnplayable) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: scheme.errorContainer.withOpacity(0.9),
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(
+                              color: scheme.error.withOpacity(0.24),
+                            ),
+                          ),
+                          child: Text(
+                            '异常',
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              fontWeight: FontWeight.w800,
+                              color: scheme.onErrorContainer,
+                            ),
+                          ),
+                        ),
+                      ],
                       if (duration != null) ...[
                         const SizedBox(width: 10),
                         Container(
@@ -518,7 +544,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
                             formatDuration(duration),
                             style: theme.textTheme.labelSmall?.copyWith(
                               fontWeight: FontWeight.w700,
-                              color: scheme.onSurfaceVariant,
+                              color: isUnplayable
+                                  ? scheme.error
+                                  : scheme.onSurfaceVariant,
                             ),
                           ),
                         ),
@@ -591,3 +619,5 @@ class _TrackGroup {
   final String name;
   final List<AudioTrack> tracks;
 }
+
+

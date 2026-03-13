@@ -42,6 +42,7 @@ class PlayerController extends ChangeNotifier {
   bool _scanCancelRequested = false;
   String? _scanStatusText;
   int _scanTaskId = 0;
+  final Set<String> _unplayablePaths = <String>{};
   PlayerSettings _settings = const PlayerSettings();
   MediaItem? _currentMediaItem;
   PlaybackState _playbackState = PlaybackState();
@@ -75,6 +76,8 @@ class PlayerController extends ChangeNotifier {
   Duration get position => _position;
   PermissionGuideState get permissionState => _permissionState;
   UiNotice? get notice => _notice;
+
+  bool isTrackUnplayable(String path) => _unplayablePaths.contains(path);
 
   int? get currentIndex {
     final currentId = _currentMediaItem?.id;
@@ -135,6 +138,7 @@ class PlayerController extends ChangeNotifier {
     try {
       final result = await _importService.autoScan(
         isCancelled: () => _scanCancelRequested || taskId != _scanTaskId,
+        minDurationMs: _settings.minScanDurationSec * 1000,
       );
 
       if (taskId != _scanTaskId || _scanCancelRequested || result.cancelled) {
@@ -145,6 +149,7 @@ class PlayerController extends ChangeNotifier {
       if (result.tracks.isNotEmpty) {
         await _repository.upsertTracks(result.tracks);
       }
+      await _repository.removeTracksBelowDuration(_settings.minScanDurationSec * 1000);
       await _reloadTracks();
       _permissionState = await _importService.getPermissionGuideState();
       if (result.message != null) {
@@ -175,6 +180,7 @@ class PlayerController extends ChangeNotifier {
     if (_scanInProgress) return;
     await _runBusyTask(() async {
       final result = await _importService.pickFolderAndScan(
+        minDurationMs: _settings.minScanDurationSec * 1000,
         onProgress: (progress) {
           _scanStatusText = '已扫描 ${progress.processedCount} 项，发现 ${progress.foundCount} 个音频';
           notifyListeners();
@@ -183,6 +189,7 @@ class PlayerController extends ChangeNotifier {
       if (result.tracks.isNotEmpty) {
         await _repository.upsertTracks(result.tracks);
       }
+      await _repository.removeTracksBelowDuration(_settings.minScanDurationSec * 1000);
       await _reloadTracks();
       if (result.message != null && !result.cancelled) {
         _pushNotice(result.message!, isError: result.failed || result.permissionDenied);
@@ -193,10 +200,13 @@ class PlayerController extends ChangeNotifier {
   Future<void> importFiles() async {
     if (_scanInProgress) return;
     await _runBusyTask(() async {
-      final result = await _importService.pickFiles();
+      final result = await _importService.pickFiles(
+        minDurationMs: _settings.minScanDurationSec * 1000,
+      );
       if (result.tracks.isNotEmpty) {
         await _repository.upsertTracks(result.tracks);
       }
+      await _repository.removeTracksBelowDuration(_settings.minScanDurationSec * 1000);
       await _reloadTracks();
       if (result.message != null && !result.cancelled) {
         _pushNotice(result.message!, isError: result.failed || result.permissionDenied);
@@ -239,15 +249,22 @@ class PlayerController extends ChangeNotifier {
 
   Future<void> playTrackAt(int index) async {
     if (index < 0 || index >= _tracks.length) return;
+
     final track = _tracks[index];
-    final ok = await _audioHandler.playFromIndex(index);
-    if (!ok) {
-      _pushNotice('该音频无法正常播放，可能文件已损坏或格式不受支持。', isError: true);
-      if (track.durationMs <= 0) {
-        await _repository.removeTrack(track.path);
-        await _reloadTracks();
-      }
+    if (_unplayablePaths.contains(track.path)) {
+      _pushNotice('该音频此前播放失败，请长按查看详情或移除该文件。', isError: true);
+      return;
     }
+
+    final ok = await _audioHandler.playFromIndex(index);
+    if (ok) {
+      _unplayablePaths.remove(track.path);
+      notifyListeners();
+      return;
+    }
+
+    _unplayablePaths.add(track.path);
+    _pushNotice('该音频无法正常播放，可能文件已损坏或格式不受支持。', isError: true);
   }
 
   Future<void> togglePlayPause() async {
@@ -273,6 +290,13 @@ class PlayerController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> updateMinScanDuration(int seconds) async {
+    final updated = _settings.copyWith(minScanDurationSec: seconds);
+    _settings = updated;
+    await _repository.saveSettings(updated);
+    notifyListeners();
+  }
+
   Future<void> updateRepeatMode(RepeatModeType mode) async {
     final updated = _settings.copyWith(repeatMode: mode);
     _settings = updated;
@@ -283,6 +307,8 @@ class PlayerController extends ChangeNotifier {
 
   Future<void> _reloadTracks() async {
     _tracks = await _repository.getAllTracks();
+    final activePaths = _tracks.map((track) => track.path).toSet();
+    _unplayablePaths.removeWhere((path) => !activePaths.contains(path));
     await _audioHandler.setTracks(_tracks);
     notifyListeners();
   }
@@ -316,3 +342,8 @@ class PlayerController extends ChangeNotifier {
     super.dispose();
   }
 }
+
+
+
+
+

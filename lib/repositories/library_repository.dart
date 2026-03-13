@@ -1,4 +1,4 @@
-import 'package:path/path.dart' as p;
+﻿import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
 import '../models/audio_track.dart';
@@ -66,6 +66,20 @@ class LibraryRepository {
     await _database.delete(_tracksTable, where: 'path = ?', whereArgs: [path]);
   }
 
+  Future<int> removeTracksBelowDuration(int minDurationMs) async {
+    if (minDurationMs <= 0) {
+      return _database.delete(
+        _tracksTable,
+        where: 'duration_ms <= 0',
+      );
+    }
+    return _database.delete(
+      _tracksTable,
+      where: 'duration_ms <= 0 OR duration_ms < ?',
+      whereArgs: [minDurationMs],
+    );
+  }
+
   Future<PlayerSettings> getSettings() async {
     final rows = await _database.query(_settingsTable);
     final values = <String, String>{};
@@ -76,6 +90,7 @@ class LibraryRepository {
     return PlayerSettings(
       skipStartSec: int.tryParse(values['skip_start_sec'] ?? '') ?? 0,
       skipEndSec: int.tryParse(values['skip_end_sec'] ?? '') ?? 0,
+      minScanDurationSec: int.tryParse(values['min_scan_duration_sec'] ?? '') ?? 0,
       repeatMode: _parseRepeatMode(values['repeat_mode']),
     );
   }
@@ -93,6 +108,7 @@ class LibraryRepository {
 
     put('skip_start_sec', settings.skipStartSec.toString());
     put('skip_end_sec', settings.skipEndSec.toString());
+    put('min_scan_duration_sec', settings.minScanDurationSec.toString());
     put('repeat_mode', settings.repeatMode.name);
     await batch.commit(noResult: true);
   }

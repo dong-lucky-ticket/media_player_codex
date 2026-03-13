@@ -1,4 +1,4 @@
-class AudioTrack {
+﻿class AudioTrack {
   const AudioTrack({
     required this.path,
     required this.title,
@@ -65,23 +65,26 @@ class PlayerSettings {
   const PlayerSettings({
     this.skipStartSec = 0,
     this.skipEndSec = 0,
+    this.minScanDurationSec = 0,
     this.repeatMode = RepeatModeType.listLoop,
   });
 
   final int skipStartSec;
   final int skipEndSec;
+  final int minScanDurationSec;
   final RepeatModeType repeatMode;
 
   PlayerSettings copyWith({
     int? skipStartSec,
     int? skipEndSec,
+    int? minScanDurationSec,
     RepeatModeType? repeatMode,
   }) {
     return PlayerSettings(
       skipStartSec: skipStartSec ?? this.skipStartSec,
       skipEndSec: skipEndSec ?? this.skipEndSec,
+      minScanDurationSec: minScanDurationSec ?? this.minScanDurationSec,
       repeatMode: repeatMode ?? this.repeatMode,
     );
   }
 }
-
