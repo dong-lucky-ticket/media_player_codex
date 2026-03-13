@@ -245,8 +245,20 @@ class PlayerController extends ChangeNotifier {
     await _reloadTracks();
   }
 
+  Future<void> removeTracks(List<AudioTrack> tracks) async {
+    if (tracks.isEmpty) return;
+    await _repository.removeTracks(tracks.map((track) => track.path).toList());
+    await _reloadTracks();
+  }
+
   Future<void> restoreTrack(AudioTrack track) async {
     await _repository.upsertTracks([track]);
+    await _reloadTracks();
+  }
+
+  Future<void> restoreTracks(List<AudioTrack> tracks) async {
+    if (tracks.isEmpty) return;
+    await _repository.upsertTracks(tracks);
     await _reloadTracks();
   }
 
@@ -348,6 +360,8 @@ class PlayerController extends ChangeNotifier {
     super.dispose();
   }
 }
+
+
 
 
 

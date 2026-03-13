@@ -66,6 +66,15 @@ class LibraryRepository {
     await _database.delete(_tracksTable, where: 'path = ?', whereArgs: [path]);
   }
 
+  Future<void> removeTracks(List<String> paths) async {
+    if (paths.isEmpty) return;
+    final batch = _database.batch();
+    for (final path in paths) {
+      batch.delete(_tracksTable, where: 'path = ?', whereArgs: [path]);
+    }
+    await batch.commit(noResult: true);
+  }
+
   Future<int> removeTracksBelowDuration(int minDurationMs) async {
     if (minDurationMs <= 0) {
       return _database.delete(
@@ -120,4 +129,6 @@ class LibraryRepository {
     );
   }
 }
+
+
 

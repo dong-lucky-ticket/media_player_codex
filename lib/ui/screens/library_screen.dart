@@ -275,6 +275,18 @@ class _LibraryScreenState extends State<LibraryScreen> {
                       ],
                     ),
                   ),
+                  IconButton(
+                    tooltip: '删除此文件夹下全部音频',
+                    onPressed: () =>
+                        _handleRemoveGroup(context, controller, group),
+                    icon: Icon(
+                      Icons.delete_sweep_rounded,
+                      size: 20,
+                      color: scheme.error.withOpacity(0.82),
+                    ),
+                    visualDensity: VisualDensity.compact,
+                    splashRadius: 20,
+                  ),
                 ],
               ),
             ),
@@ -328,6 +340,26 @@ class _LibraryScreenState extends State<LibraryScreen> {
       actionLabel: '撤销',
       onAction: () {
         controller.restoreTrack(track);
+      },
+    );
+  }
+
+  Future<void> _handleRemoveGroup(
+    BuildContext context,
+    PlayerController controller,
+    _TrackGroup group,
+  ) async {
+    final removedTracks = List<AudioTrack>.from(group.tracks);
+    await controller.removeTracks(removedTracks);
+    if (!mounted) return;
+
+    showAppSnackBar(
+      context,
+      message: '已移除 ${group.name} 下的 ${removedTracks.length} 项',
+      isError: false,
+      actionLabel: '撤销',
+      onAction: () {
+        controller.restoreTracks(removedTracks);
       },
     );
   }
