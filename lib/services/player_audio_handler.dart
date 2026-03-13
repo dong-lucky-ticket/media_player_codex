@@ -58,7 +58,7 @@ class PlayerAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
         )
         .toList(growable: false);
 
-    final existingCurrentId = mediaItem.value?.id;
+    final existingCurrentId = preserveIndex ? mediaItem.value?.id : null;
     final locatedIndex = existingCurrentId == null
         ? -1
         : items.indexWhere((item) => item.id == existingCurrentId);
@@ -137,15 +137,32 @@ class PlayerAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
   @override
   Future<void> seek(Duration position) => _player.seek(position);
 
-  Future<void> playFromIndex(int index) async {
+  Future<bool> playFromIndex(int index) async {
+    final previousIndex = _player.currentIndex;
+    final previousPosition = _player.position;
+    final wasPlaying = _player.playing;
+
     _suppressImplicitSelection = false;
-    await _player.seek(Duration(seconds: _skipStartSec), index: index);
-    _publishCurrentSelectionFromPlayer();
-    await _player.play();
+    try {
+      await _player.seek(Duration(seconds: _skipStartSec), index: index);
+      _publishCurrentSelectionFromPlayer();
+      await _player.play();
+      return true;
+    } catch (_) {
+      await _recoverFromPlaybackFailure(
+        failedIndex: index,
+        previousIndex: previousIndex,
+        previousPosition: previousPosition,
+        wasPlaying: wasPlaying,
+      );
+      return false;
+    }
   }
 
   @override
-  Future<void> skipToQueueItem(int index) => playFromIndex(index);
+  Future<void> skipToQueueItem(int index) async {
+    await playFromIndex(index);
+  }
 
   @override
   Future<void> skipToNext() async {
@@ -314,6 +331,40 @@ class PlayerAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
     }
   }
 
+  Future<void> _recoverFromPlaybackFailure({
+    required int failedIndex,
+    required int? previousIndex,
+    required Duration previousPosition,
+    required bool wasPlaying,
+  }) async {
+    final queueLength = queue.value.length;
+    if (previousIndex != null &&
+        previousIndex >= 0 &&
+        previousIndex < queueLength &&
+        previousIndex != failedIndex) {
+      try {
+        await _player.seek(previousPosition, index: previousIndex);
+        _publishCurrentSelectionFromPlayer();
+        if (wasPlaying) {
+          await _player.play();
+        } else {
+          await _player.pause();
+        }
+        return;
+      } catch (_) {
+        // Fall through to hard reset below.
+      }
+    }
+
+    try {
+      await _player.stop();
+    } catch (_) {
+      // Ignore stop errors during recovery.
+    }
+    mediaItem.add(null);
+    _broadcastState();
+  }
+
   void _publishCurrentSelectionFromPlayer() {
     final index = _player.currentIndex;
     if (index == null || index < 0 || index >= queue.value.length) return;
@@ -324,7 +375,3 @@ class PlayerAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
   Duration get position => _player.position;
   Stream<Duration> get positionStream => _player.positionStream;
 }
-
-
-
-

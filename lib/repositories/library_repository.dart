@@ -74,8 +74,8 @@ class LibraryRepository {
     }
 
     return PlayerSettings(
-      skipStartSec: int.tryParse(values['skip_start_sec'] ?? '') ?? 5,
-      skipEndSec: int.tryParse(values['skip_end_sec'] ?? '') ?? 3,
+      skipStartSec: int.tryParse(values['skip_start_sec'] ?? '') ?? 0,
+      skipEndSec: int.tryParse(values['skip_end_sec'] ?? '') ?? 0,
       repeatMode: _parseRepeatMode(values['repeat_mode']),
     );
   }

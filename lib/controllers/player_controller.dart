@@ -165,8 +165,10 @@ class PlayerController extends ChangeNotifier {
   void stopScan() {
     if (!_scanInProgress) return;
     _scanCancelRequested = true;
-    _scanStatusText = '正在停止扫描...';
-    notifyListeners();
+    _scanTaskId += 1;
+    _scanInProgress = false;
+    _scanStatusText = null;
+    _pushNotice('已停止扫描。', isError: false);
   }
 
   Future<void> importFromFolder() async {
@@ -237,7 +239,15 @@ class PlayerController extends ChangeNotifier {
 
   Future<void> playTrackAt(int index) async {
     if (index < 0 || index >= _tracks.length) return;
-    await _audioHandler.playFromIndex(index);
+    final track = _tracks[index];
+    final ok = await _audioHandler.playFromIndex(index);
+    if (!ok) {
+      _pushNotice('该音频无法正常播放，可能文件已损坏或格式不受支持。', isError: true);
+      if (track.durationMs <= 0) {
+        await _repository.removeTrack(track.path);
+        await _reloadTracks();
+      }
+    }
   }
 
   Future<void> togglePlayPause() async {

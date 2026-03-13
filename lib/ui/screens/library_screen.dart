@@ -72,12 +72,18 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 prefixIcon: const Icon(Icons.search, size: 18),
                 hintText: '搜索歌曲名称或路径',
                 filled: true,
-                fillColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.35),
+                fillColor: Theme.of(context)
+                    .colorScheme
+                    .surfaceVariant
+                    .withOpacity(0.35),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14),
                   borderSide: BorderSide.none,
                 ),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
               ),
               onChanged: controller.setSearchText,
             ),
@@ -90,7 +96,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
               Expanded(
                 child: _buildActionButton(
                   context,
-                  icon: controller.scanInProgress ? Icons.stop_circle_outlined : Icons.blur_circular,
+                  icon: controller.scanInProgress
+                      ? Icons.stop_circle_outlined
+                      : Icons.blur_circular,
                   label: controller.scanInProgress ? '停止扫描' : '扫描',
                   onPressed: controller.scanInProgress
                       ? controller.stopScan
@@ -104,7 +112,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   context,
                   icon: Icons.folder_outlined,
                   label: '文件夹',
-                  onPressed: controller.isWorking ? null : controller.importFromFolder,
+                  onPressed:
+                      controller.isWorking ? null : controller.importFromFolder,
                 ),
               ),
               const SizedBox(width: 8),
@@ -125,7 +134,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
             child: Row(
               children: [
                 Icon(
-                  controller.scanInProgress ? Icons.sync_rounded : Icons.info_outline_rounded,
+                  controller.scanInProgress
+                      ? Icons.sync_rounded
+                      : Icons.info_outline_rounded,
                   size: 16,
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
@@ -239,7 +250,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
                           group.name,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                         const SizedBox(height: 2),
                         Text(
@@ -265,14 +278,18 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   key: ValueKey(track.path),
                   direction: DismissDirection.endToStart,
                   background: _buildDismissBackground(context),
-                  onDismissed: (_) => _handleRemoveTrack(context, controller, track),
+                  onDismissed: (_) =>
+                      _handleRemoveTrack(context, controller, track),
                   child: _buildTrackTile(
                     context,
                     track: track,
                     index: serial,
                     isCurrent: isCurrent,
                     onTap: () => controller.playTrackAt(serial - 1),
-                    onRemove: () => _handleRemoveTrack(context, controller, track),
+                    onLongPress: () =>
+                        _showTrackDetailsDialog(context, track, serial),
+                    onRemove: () =>
+                        _handleRemoveTrack(context, controller, track),
                   ),
                 ),
               );
@@ -306,6 +323,61 @@ class _LibraryScreenState extends State<LibraryScreen> {
     );
   }
 
+  Future<void> _showTrackDetailsDialog(
+    BuildContext context,
+    AudioTrack track,
+    int index,
+  ) async {
+    final duration =
+        track.durationMs > 0 ? Duration(milliseconds: track.durationMs) : null;
+    final folder = _folderName(track.path);
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text('音频详情 #$index'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildDetailRow('名称', track.title),
+                _buildDetailRow('时长', formatDuration(duration)),
+                _buildDetailRow('作者', track.artist),
+                _buildDetailRow('专辑', track.album),
+                _buildDetailRow('文件夹', folder),
+                _buildDetailRow('路径', track.path),
+                if (track.artUri != null && track.artUri!.isNotEmpty)
+                  _buildDetailRow('封面 URI', track.artUri!),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('关闭'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 4),
+          SelectableText(value),
+        ],
+      ),
+    );
+  }
+
   Widget _buildActionButton(
     BuildContext context, {
     required IconData icon,
@@ -334,8 +406,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 ? scheme.error.withOpacity(0.35)
                 : scheme.outlineVariant.withOpacity(0.45),
           ),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
         ),
       ),
     );
@@ -364,16 +440,20 @@ class _LibraryScreenState extends State<LibraryScreen> {
     required int index,
     required bool isCurrent,
     required VoidCallback onTap,
+    required VoidCallback onLongPress,
     required VoidCallback onRemove,
   }) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final duration = track.durationMs > 0 ? Duration(milliseconds: track.durationMs) : null;
+    final duration =
+        track.durationMs > 0 ? Duration(milliseconds: track.durationMs) : null;
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 180),
       decoration: BoxDecoration(
-        color: isCurrent ? scheme.primaryContainer.withOpacity(0.55) : scheme.surfaceVariant.withOpacity(0.18),
+        color: isCurrent
+            ? scheme.primaryContainer.withOpacity(0.55)
+            : scheme.surfaceVariant.withOpacity(0.18),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: isCurrent ? scheme.primary.withOpacity(0.7) : Colors.transparent,
@@ -381,7 +461,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
         ),
         boxShadow: [
           BoxShadow(
-            color: isCurrent ? scheme.primary.withOpacity(0.16) : Colors.black.withOpacity(0.04),
+            color: isCurrent
+                ? scheme.primary.withOpacity(0.16)
+                : Colors.black.withOpacity(0.04),
             blurRadius: isCurrent ? 16 : 10,
             offset: const Offset(0, 4),
           ),
@@ -392,11 +474,16 @@ class _LibraryScreenState extends State<LibraryScreen> {
         child: InkWell(
           borderRadius: BorderRadius.circular(18),
           onTap: onTap,
+          onLongPress: onLongPress,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(12, 12, 8, 12),
             child: Row(
               children: [
-                _buildTrackIndex(context, index: index, isCurrent: isCurrent),
+                _buildTrackIndex(
+                  context,
+                  index: index,
+                  isCurrent: isCurrent,
+                ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Row(
@@ -416,11 +503,16 @@ class _LibraryScreenState extends State<LibraryScreen> {
                       if (duration != null) ...[
                         const SizedBox(width: 10),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
                             color: scheme.surface.withOpacity(0.8),
                             borderRadius: BorderRadius.circular(999),
-                            border: Border.all(color: scheme.outlineVariant.withOpacity(0.35)),
+                            border: Border.all(
+                              color: scheme.outlineVariant.withOpacity(0.35),
+                            ),
                           ),
                           child: Text(
                             formatDuration(duration),
@@ -441,7 +533,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   visualDensity: VisualDensity.compact,
                   style: IconButton.styleFrom(
                     backgroundColor: scheme.surface.withOpacity(0.72),
-                    side: BorderSide(color: scheme.outlineVariant.withOpacity(0.35)),
+                    side: BorderSide(
+                      color: scheme.outlineVariant.withOpacity(0.35),
+                    ),
                   ),
                   icon: const Icon(Icons.delete_outline_rounded, size: 20),
                 ),
@@ -468,7 +562,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
         color: isCurrent ? scheme.primary : scheme.surface,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isCurrent ? scheme.primary.withOpacity(0.15) : scheme.outlineVariant.withOpacity(0.5),
+          color: isCurrent
+              ? scheme.primary.withOpacity(0.15)
+              : scheme.outlineVariant.withOpacity(0.5),
         ),
         boxShadow: [
           BoxShadow(
