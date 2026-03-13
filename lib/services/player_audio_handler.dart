@@ -125,6 +125,11 @@ class PlayerAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
     return _player.play();
   }
 
+  Future<void> setPlaybackSpeed(double speed) async {
+    await _player.setSpeed(speed);
+    _broadcastState();
+  }
+
   @override
   Future<void> pause() => _player.pause();
 
@@ -375,3 +380,5 @@ class PlayerAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
   Duration get position => _player.position;
   Stream<Duration> get positionStream => _player.positionStream;
 }
+
+

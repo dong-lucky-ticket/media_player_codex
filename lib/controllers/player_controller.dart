@@ -65,6 +65,8 @@ class PlayerController extends ChangeNotifier {
         .toList(growable: false);
   }
 
+  List<AudioTrack> get allTracks => _tracks;
+
   bool get isBusy => _isBusy;
   bool get scanInProgress => _scanInProgress;
   bool get canStopScan => _scanInProgress;
@@ -74,6 +76,7 @@ class PlayerController extends ChangeNotifier {
   PlaybackState get playbackState => _playbackState;
   MediaItem? get currentMediaItem => _currentMediaItem;
   Duration get position => _position;
+  double get playbackSpeed => _playbackState.speed <= 0 ? 1.0 : _playbackState.speed;
   PermissionGuideState get permissionState => _permissionState;
   UiNotice? get notice => _notice;
 
@@ -281,6 +284,9 @@ class PlayerController extends ChangeNotifier {
 
   Future<void> playPrevious() => _audioHandler.skipToPrevious();
 
+  Future<void> updatePlaybackSpeed(double speed) =>
+      _audioHandler.setPlaybackSpeed(speed);
+
   Future<void> updateSkipSettings({required int skipStartSec, required int skipEndSec}) async {
     final updated =
         _settings.copyWith(skipStartSec: skipStartSec, skipEndSec: skipEndSec);
@@ -342,6 +348,8 @@ class PlayerController extends ChangeNotifier {
     super.dispose();
   }
 }
+
+
 
 
 
