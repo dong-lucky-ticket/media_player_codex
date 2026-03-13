@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../controllers/player_controller.dart';
 import '../../models/audio_track.dart';
+import '../widgets/app_snack_bar.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -82,11 +83,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       skipEndSec: end.clamp(0, 3600),
                     );
                     if (!mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        backgroundColor: scheme.primaryContainer,
-                        content: const Text('跳过设置已保存'),
-                      ),
+                    showAppSnackBar(
+                      context,
+                      message: '跳过设置已保存',
+                      isError: false,
                     );
                   },
                   icon: const Icon(Icons.check_rounded, size: 18),
@@ -137,11 +137,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     final seconds = int.tryParse(_minDurationController.text.trim()) ?? 0;
                     await controller.updateMinScanDuration(seconds.clamp(0, 3600));
                     if (!mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        backgroundColor: scheme.primaryContainer,
-                        content: const Text('扫描过滤条件已保存'),
-                      ),
+                    showAppSnackBar(
+                      context,
+                      message: '扫描过滤条件已保存',
+                      isError: false,
                     );
                   },
                   icon: const Icon(Icons.tune_rounded, size: 18),
@@ -364,3 +363,5 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 }
+
+

@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../controllers/player_controller.dart';
 import '../../core/formatters.dart';
 import '../../models/audio_track.dart';
+import '../widgets/app_snack_bar.dart';
 
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({super.key, required this.onOpenPermissionGuide});
@@ -32,14 +33,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
       _lastNoticeToken = notice.token;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        final color = notice.isError
-            ? Theme.of(context).colorScheme.errorContainer
-            : Theme.of(context).colorScheme.primaryContainer;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            backgroundColor: color,
-            content: Text(notice.message),
-          ),
+        showAppSnackBar(
+          context,
+          message: notice.message,
+          isError: notice.isError,
         );
       });
     }
@@ -310,18 +307,14 @@ class _LibraryScreenState extends State<LibraryScreen> {
     await controller.removeTrack(track.path);
     if (!mounted) return;
 
-    final messenger = ScaffoldMessenger.of(context);
-    messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text('已移除 ${track.title}'),
-        action: SnackBarAction(
-          label: '撤销',
-          onPressed: () {
-            controller.restoreTrack(track);
-          },
-        ),
-      ),
+    showAppSnackBar(
+      context,
+      message: '已移除 ${track.title}',
+      isError: false,
+      actionLabel: '撤销',
+      onAction: () {
+        controller.restoreTrack(track);
+      },
     );
   }
 
@@ -619,5 +612,7 @@ class _TrackGroup {
   final String name;
   final List<AudioTrack> tracks;
 }
+
+
 
 
