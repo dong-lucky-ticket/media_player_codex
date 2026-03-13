@@ -90,31 +90,39 @@ class MiniPlayerBar extends StatelessWidget {
                   ),
                 ),
               ),
-              Row(
-                children: [
-                  Expanded(
-                    child: SliderTheme(
-                      data: SliderTheme.of(context).copyWith(
-                        trackHeight: 2.6,
-                        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
-                        overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
-                      ),
-                      child: Slider(
-                        min: 0,
-                        max: max,
-                        value: value,
-                        onChanged: (v) => controller.seekTo(Duration(milliseconds: v.toInt())),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    '${formatDuration(progress)} / ${formatDuration(duration)}',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: scheme.onSurfaceVariant,
+              InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: onOpenPlayer,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: SliderTheme(
+                          data: SliderTheme.of(context).copyWith(
+                            trackHeight: 2.6,
+                            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+                            overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                          ),
+                          child: Slider(
+                            min: 0,
+                            max: max,
+                            value: value,
+                            onChanged: (v) =>
+                                controller.seekTo(Duration(milliseconds: v.toInt())),
+                          ),
                         ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '${formatDuration(progress)} / ${formatDuration(duration)}',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                            ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ],
           ),
@@ -123,4 +131,3 @@ class MiniPlayerBar extends StatelessWidget {
     );
   }
 }
-
