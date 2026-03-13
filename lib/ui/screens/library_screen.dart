@@ -33,6 +33,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
       _lastNoticeToken = notice.token;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
+        final isPermissionNotice =
+            !controller.permissionState.scanAvailable &&
+            notice.message == controller.permissionState.summary;
+        if (isPermissionNotice) return;
         showAppSnackBar(
           context,
           message: notice.message,
@@ -43,22 +47,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
     return Column(
       children: [
-        if (!controller.permissionState.scanAvailable)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-            child: Card(
-              color: Theme.of(context).colorScheme.errorContainer,
-              child: ListTile(
-                leading: const Icon(Icons.warning_amber_rounded),
-                title: const Text('自动扫描不可用'),
-                subtitle: Text(controller.permissionState.summary),
-                trailing: FilledButton.tonal(
-                  onPressed: widget.onOpenPermissionGuide,
-                  child: const Text('去授权'),
-                ),
-              ),
-            ),
-          ),
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
           child: SizedBox(
@@ -161,19 +149,45 @@ class _LibraryScreenState extends State<LibraryScreen> {
           ),
         const SizedBox(height: 10),
         Expanded(
-          child: tracks.isEmpty
-              ? const Center(child: Text('暂无音频，请先扫描或导入'))
-              : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                  itemCount: groups.length,
-                  separatorBuilder: (context, index) => const SizedBox(height: 12),
-                  itemBuilder: (context, index) => _buildGroupSection(
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: tracks.isEmpty
+                    ? Padding(
+                        padding: EdgeInsets.only(
+                          bottom: controller.permissionState.scanAvailable ? 0 : 124,
+                        ),
+                        child: const Center(child: Text('暂无音频，请先扫描或导入')),
+                      )
+                    : ListView.separated(
+                        padding: EdgeInsets.fromLTRB(
+                          12,
+                          0,
+                          12,
+                          controller.permissionState.scanAvailable ? 12 : 136,
+                        ),
+                        itemCount: groups.length,
+                        separatorBuilder: (context, index) => const SizedBox(height: 12),
+                        itemBuilder: (context, index) => _buildGroupSection(
+                          context,
+                          controller,
+                          groups[index],
+                          trackOrder,
+                        ),
+                      ),
+              ),
+              if (!controller.permissionState.scanAvailable)
+                Positioned(
+                  left: 12,
+                  right: 12,
+                  bottom: 12,
+                  child: _buildPermissionFloatingCard(
                     context,
-                    controller,
-                    groups[index],
-                    trackOrder,
+                    summary: controller.permissionState.summary,
                   ),
                 ),
+            ],
+          ),
         ),
       ],
     );
@@ -604,7 +618,93 @@ class _LibraryScreenState extends State<LibraryScreen> {
       ),
     );
   }
+  Widget _buildPermissionFloatingCard(
+    BuildContext context, {
+    required String summary,
+  }) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF6F1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE8CFC1)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFE6D8),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: const Icon(
+                Icons.lock_outline_rounded,
+                size: 20,
+                color: Color(0xFF9A4F2B),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '自动扫描不可用',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFF7D3E1F),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    summary,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      height: 1.4,
+                      color: const Color(0xFF8D5A43),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            FilledButton.tonalIcon(
+              onPressed: widget.onOpenPermissionGuide,
+              icon: const Icon(Icons.arrow_forward_rounded, size: 18),
+              label: const Text('去授权'),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(0, 40),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                elevation: 0,
+                backgroundColor: scheme.surface,
+                foregroundColor: const Color(0xFF7D3E1F),
+                side: const BorderSide(color: Color(0xFFE8CFC1)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                textStyle: theme.textTheme.labelLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
+
 
 class _TrackGroup {
   const _TrackGroup({required this.name, required this.tracks});
@@ -612,6 +712,9 @@ class _TrackGroup {
   final String name;
   final List<AudioTrack> tracks;
 }
+
+
+
 
 
 
