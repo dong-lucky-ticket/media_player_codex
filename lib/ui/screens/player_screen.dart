@@ -1,9 +1,10 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../controllers/player_controller.dart';
 import '../../core/formatters.dart';
 import '../../core/track_sorter.dart';
+import '../widgets/app_snack_bar.dart';
 
 class PlayerScreen extends StatelessWidget {
   const PlayerScreen({super.key});
@@ -650,137 +651,173 @@ class PlayerScreen extends StatelessWidget {
       BuildContext context, PlayerController controller) async {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final tracks = controller.activePlaylist;
-    final currentPlaylistIndex = controller.currentPlaylistIndex;
 
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (context) {
-        return SafeArea(
-          child: SizedBox(
-            height: MediaQuery.of(context).size.height * 0.66,
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-                  child: Row(
-                    children: [
-                      Text(
-                        '播放列表',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const Spacer(),
-                      Text(
-                        '${tracks.length} 首',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: scheme.onSurfaceVariant,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      TextButton(
-                        onPressed: tracks.isEmpty
-                            ? null
-                            : () async {
-                                await controller.clearActivePlaylist();
-                                if (context.mounted) {
-                                  Navigator.of(context).pop();
-                                }
-                              },
-                        child: const Text('清空'),
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(height: 1),
-                Expanded(
-                  child: ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-                    itemCount: tracks.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 8),
-                    itemBuilder: (context, index) {
-                      final track = tracks[index];
-                      final isCurrent = index == currentPlaylistIndex;
-                      return Material(
-                        color: isCurrent
-                            ? scheme.primaryContainer.withOpacity(0.5)
-                            : scheme.surfaceVariant.withOpacity(0.14),
-                        borderRadius: BorderRadius.circular(16),
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(16),
-                          onTap: () async {
-                            final navigator = Navigator.of(context);
-                            await controller.playTrackAt(index);
-                            navigator.pop();
-                          },
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 30,
-                                  height: 30,
-                                  alignment: Alignment.center,
-                                  decoration: BoxDecoration(
-                                    color: isCurrent
-                                        ? scheme.primary
-                                        : scheme.surface,
-                                    borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(
-                                      color: isCurrent
-                                          ? scheme.primary.withOpacity(0.15)
-                                          : scheme.outlineVariant
-                                              .withOpacity(0.35),
-                                    ),
-                                  ),
-                                  child: Text(
-                                    '${index + 1}',
-                                    style: theme.textTheme.labelSmall?.copyWith(
-                                      fontWeight: FontWeight.w800,
-                                      color: isCurrent
-                                          ? scheme.onPrimary
-                                          : scheme.onSurface,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Text(
-                                    track.title,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: theme.textTheme.titleSmall?.copyWith(
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Text(
-                                  formatDuration(
-                                    track.durationMs > 0
-                                        ? Duration(
-                                            milliseconds: track.durationMs)
-                                        : null,
-                                  ),
-                                  style: theme.textTheme.labelSmall?.copyWith(
-                                    color: scheme.onSurfaceVariant,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ],
+      builder: (sheetContext) {
+        return Consumer<PlayerController>(
+          builder: (context, playlistController, _) {
+            final tracks = playlistController.activePlaylist;
+            final currentPlaylistIndex = playlistController.currentPlaylistIndex;
+
+            return SafeArea(
+              child: SizedBox(
+                height: MediaQuery.of(sheetContext).size.height * 0.66,
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                      child: Row(
+                        children: [
+                          Text(
+                            '播放列表',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w800,
                             ),
                           ),
-                        ),
-                      );
-                    },
-                  ),
+                          const Spacer(),
+                          Text(
+                            '${tracks.length} 首',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          TextButton(
+                            onPressed: tracks.isEmpty
+                                ? null
+                                : () async {
+                                    await playlistController.clearActivePlaylist();
+                                    if (sheetContext.mounted) {
+                                      Navigator.of(sheetContext).pop();
+                                    }
+                                  },
+                            child: const Text('清空'),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Divider(height: 1),
+                    Expanded(
+                      child: tracks.isEmpty
+                          ? Center(
+                              child: Text(
+                                '播放列表为空',
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: scheme.onSurfaceVariant,
+                                ),
+                              ),
+                            )
+                          : ListView.separated(
+                              padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+                              itemCount: tracks.length,
+                              separatorBuilder: (_, __) => const SizedBox(height: 8),
+                              itemBuilder: (context, index) {
+                                final track = tracks[index];
+                                final isCurrent = index == currentPlaylistIndex;
+                                return Material(
+                                  color: isCurrent
+                                      ? scheme.primaryContainer.withOpacity(0.5)
+                                      : scheme.surfaceVariant.withOpacity(0.14),
+                                  borderRadius: BorderRadius.circular(16),
+                                  child: InkWell(
+                                    borderRadius: BorderRadius.circular(16),
+                                    onTap: () async {
+                                      final navigator = Navigator.of(sheetContext);
+                                      await playlistController.playTrackAt(index);
+                                      navigator.pop();
+                                    },
+                                    child: Padding(
+                                      padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+                                      child: Row(
+                                        children: [
+                                          Container(
+                                            width: 30,
+                                            height: 30,
+                                            alignment: Alignment.center,
+                                            decoration: BoxDecoration(
+                                              color: isCurrent
+                                                  ? scheme.primary
+                                                  : scheme.surface,
+                                              borderRadius: BorderRadius.circular(10),
+                                              border: Border.all(
+                                                color: isCurrent
+                                                    ? scheme.primary.withOpacity(0.15)
+                                                    : scheme.outlineVariant
+                                                        .withOpacity(0.35),
+                                              ),
+                                            ),
+                                            child: Text(
+                                              '${index + 1}',
+                                              style: theme.textTheme.labelSmall?.copyWith(
+                                                fontWeight: FontWeight.w800,
+                                                color: isCurrent
+                                                    ? scheme.onPrimary
+                                                    : scheme.onSurface,
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 10),
+                                          Expanded(
+                                            child: Text(
+                                              track.title,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: theme.textTheme.titleSmall?.copyWith(
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 10),
+                                          Text(
+                                            formatDuration(
+                                              track.durationMs > 0
+                                                  ? Duration(
+                                                      milliseconds: track.durationMs,
+                                                    )
+                                                  : null,
+                                            ),
+                                            style: theme.textTheme.labelSmall?.copyWith(
+                                              color: scheme.onSurfaceVariant,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 4),
+                                          IconButton(
+                                            tooltip: '移除此项',
+                                            visualDensity: VisualDensity.compact,
+                                            onPressed: () async {
+                                              final removedTrack = track;
+                                              await playlistController
+                                                  .removeTrackFromActivePlaylist(index);
+                                              if (!sheetContext.mounted) return;
+                                              showAppSnackBar(
+                                                sheetContext,
+                                                message: '已从播放列表移除 ${removedTrack.title}',
+                                                isError: false,
+                                              );
+                                            },
+                                            icon: Icon(
+                                              Icons.remove_circle_outline_rounded,
+                                              size: 20,
+                                              color: scheme.error.withOpacity(0.88),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         );
       },
     );
@@ -897,3 +934,5 @@ class PlayerScreen extends StatelessWidget {
     );
   }
 }
+
+

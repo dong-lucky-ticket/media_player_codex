@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/foundation.dart';
@@ -336,6 +336,14 @@ class PlayerController extends ChangeNotifier {
     _pushNotice('该音频无法正常播放，可能文件已损坏或格式不受支持。', isError: true);
   }
 
+  Future<void> removeTrackFromActivePlaylist(int index) async {
+    if (index < 0 || index >= _activePlaylist.length) return;
+
+    final updatedPlaylist = List<AudioTrack>.from(_activePlaylist)..removeAt(index);
+    _activePlaylist = List<AudioTrack>.unmodifiable(updatedPlaylist);
+    await _audioHandler.setTracks(_activePlaylist);
+    notifyListeners();
+  }
   Future<void> clearActivePlaylist() async {
     _activePlaylist = const [];
     await _audioHandler.setTracks(_activePlaylist, preserveIndex: false);
@@ -443,3 +451,4 @@ class PlayerController extends ChangeNotifier {
     super.dispose();
   }
 }
+
