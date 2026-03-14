@@ -7,7 +7,12 @@ import '../../models/audio_track.dart';
 import '../widgets/app_snack_bar.dart';
 
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key});
+  const SettingsScreen({
+    super.key,
+    this.bottomOverlayHeight = 0,
+  });
+
+  final double bottomOverlayHeight;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -363,5 +368,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 }
+
+
+
+
+
+
+
 
 

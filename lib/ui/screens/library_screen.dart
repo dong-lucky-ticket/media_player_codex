@@ -483,12 +483,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
     showAppSnackBar(
       context,
       message: '已移除 ${track.title}',
+
       isError: false,
       actionLabel: '撤销',
       onAction: () {
         controller.restoreTrack(track);
-      },
-    );
+      },    );
   }
 
   Future<void> _handleRemoveGroup(
@@ -508,8 +508,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       actionLabel: '撤销',
       onAction: () {
         controller.restoreTracks(removedTracks);
-      },
-    );
+      },    );
   }
 
   Future<void> _showTrackDetailsDialog(
@@ -901,4 +900,11 @@ class _TrackGroup {
   final String name;
   final List<AudioTrack> tracks;
 }
+
+
+
+
+
+
+
 
