@@ -12,6 +12,7 @@ class PlayerScreen extends StatelessWidget {
   static const _minPlaybackSpeed = 0.5;
   static const _maxPlaybackSpeed = 2.0;
   static const _playbackSpeedDivisions = 15;
+  static const _playlistSheetItemExtentEstimate = 58.0;
 
   @override
   Widget build(BuildContext context) {
@@ -652,6 +653,13 @@ class PlayerScreen extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final currentItemKey = GlobalKey();
+    final initialCurrentPlaylistIndex = controller.currentPlaylistIndex;
+    final initialScrollOffset = initialCurrentPlaylistIndex != null &&
+            initialCurrentPlaylistIndex > 2
+        ? (initialCurrentPlaylistIndex - 2) * _playlistSheetItemExtentEstimate
+        : 0.0;
+    final playlistScrollController =
+        ScrollController(initialScrollOffset: initialScrollOffset);
     var didAutoScrollToCurrent = false;
 
     await showModalBottomSheet<void>(
@@ -737,6 +745,7 @@ class PlayerScreen extends StatelessWidget {
                               ),
                             )
                           : ListView.separated(
+                              controller: playlistScrollController,
                               padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
                               itemCount: tracks.length,
                               separatorBuilder: (_, __) => const SizedBox(height: 8),
@@ -878,6 +887,7 @@ class PlayerScreen extends StatelessWidget {
         );
       },
     );
+    playlistScrollController.dispose();
   }
 
   Future<void> _showDetailsSheet(
@@ -991,6 +1001,8 @@ class PlayerScreen extends StatelessWidget {
     );
   }
 }
+
+
 
 
 
