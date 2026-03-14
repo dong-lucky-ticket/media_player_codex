@@ -12,8 +12,13 @@ class PlayerScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final controller = context.watch<PlayerController>();
-    final track = controller.currentTrack;
+    final controller = context.read<PlayerController>();
+    final track = context.select((PlayerController c) => c.currentTrack);
+    final progress = context.select((PlayerController c) => c.position);
+    final currentMediaDuration =
+        context.select((PlayerController c) => c.currentMediaItem?.duration);
+    final isPlaying =
+        context.select((PlayerController c) => c.playbackState.playing);
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
@@ -65,14 +70,12 @@ class PlayerScreen extends StatelessWidget {
       );
     }
 
-    final progress = controller.position;
-    final duration = controller.currentMediaItem?.duration ??
+    final duration = currentMediaDuration ??
         (track.durationMs > 0
             ? Duration(milliseconds: track.durationMs)
             : null);
     final max = duration?.inMilliseconds.toDouble() ?? 1;
     final value = progress.inMilliseconds.clamp(0, max.toInt()).toDouble();
-    final isPlaying = controller.playbackState.playing;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 20),

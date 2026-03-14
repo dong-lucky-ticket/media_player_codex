@@ -22,6 +22,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
   int _lastNoticeToken = 0;
   late final ScrollController _scrollController;
   bool _showScrollToTopButton = false;
+  List<AudioTrack>? _lastTracksSource;
+  List<_TrackGroup>? _lastTrackGroups;
+  List<AudioTrack>? _lastAllTracksSource;
+  List<_TrackGroup>? _lastAllTrackGroups;
 
   @override
   void initState() {
@@ -49,11 +53,23 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final controller = context.watch<PlayerController>();
-    final notice = controller.notice;
-    final tracks = controller.tracks;
-    final groups = _groupTracks(tracks);
-    final allGroups = _groupTracks(controller.allTracks);
+    final controller = context.read<PlayerController>();
+    final notice = context.select((PlayerController c) => c.notice);
+    final tracks = context.select((PlayerController c) => c.tracks);
+    final allTracks = context.select((PlayerController c) => c.allTracks);
+    final scanInProgress =
+        context.select((PlayerController c) => c.scanInProgress);
+    final isWorking = context.select((PlayerController c) => c.isWorking);
+    final scanStatusText =
+        context.select((PlayerController c) => c.scanStatusText);
+    final permissionState =
+        context.select((PlayerController c) => c.permissionState);
+    final currentMediaId =
+        context.select((PlayerController c) => c.currentMediaItem?.id);
+    final _ = context.select((PlayerController c) => c.unplayableVersion);
+
+    final groups = _groupTracksCached(tracks, useAllTracksCache: false);
+    final allGroups = _groupTracksCached(allTracks, useAllTracksCache: true);
     final allGroupsByName = {
       for (final group in allGroups) group.name: group.tracks,
     };
@@ -62,8 +78,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
       _lastNoticeToken = notice.token;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        final isPermissionNotice = !controller.permissionState.scanAvailable &&
-            notice.message == controller.permissionState.summary;
+        final isPermissionNotice = !permissionState.scanAvailable &&
+            notice.message == permissionState.summary;
         if (isPermissionNotice) return;
         showAppSnackBar(
           context,
@@ -72,7 +88,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
         );
       });
     }
-
     return Column(
       children: [
         Padding(
@@ -110,16 +125,16 @@ class _LibraryScreenState extends State<LibraryScreen> {
               Expanded(
                 child: _buildActionButton(
                   context,
-                  icon: controller.scanInProgress
+                  icon: scanInProgress
                       ? Icons.stop_circle_outlined
                       : Icons.blur_circular,
-                  label: controller.scanInProgress
+                  label: scanInProgress
                       ? '停止自动扫描'
                       : '自动扫描',
-                  onPressed: controller.scanInProgress
+                  onPressed: scanInProgress
                       ? controller.stopScan
-                      : (controller.isWorking ? null : controller.runAutoScan),
-                  isDanger: controller.scanInProgress,
+                      : (isWorking ? null : controller.runAutoScan),
+                  isDanger: scanInProgress,
                 ),
               ),
               const SizedBox(width: 8),
@@ -129,7 +144,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   icon: Icons.folder_outlined,
                   label: '导入文件夹',
                   onPressed:
-                      controller.isWorking ? null : controller.importFromFolder,
+                      isWorking ? null : controller.importFromFolder,
                 ),
               ),
               const SizedBox(width: 8),
@@ -139,19 +154,19 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   icon: Icons.audio_file_outlined,
                   label: '导入文件',
                   onPressed:
-                      controller.isWorking ? null : controller.importFiles,
+                      isWorking ? null : controller.importFiles,
                 ),
               ),
             ],
           ),
         ),
-        if (controller.scanStatusText != null)
+        if (scanStatusText != null)
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
             child: Row(
               children: [
                 Icon(
-                  controller.scanInProgress
+                  scanInProgress
                       ? Icons.sync_rounded
                       : Icons.info_outline_rounded,
                   size: 16,
@@ -160,7 +175,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
-                    controller.scanStatusText!,
+                    scanStatusText,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -171,7 +186,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
               ],
             ),
           ),
-        if (controller.isWorking)
+        if (isWorking)
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
             child: LinearProgressIndicator(
@@ -187,7 +202,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 child: tracks.isEmpty
                     ? Padding(
                         padding: EdgeInsets.only(
-                          bottom: controller.permissionState.scanAvailable
+                          bottom: permissionState.scanAvailable
                               ? 0
                               : 124,
                         ),
@@ -201,7 +216,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                           12,
                           0,
                           12,
-                          controller.permissionState.scanAvailable ? 12 : 136,
+                          permissionState.scanAvailable ? 12 : 136,
                         ),
                         itemCount: groups.length,
                         separatorBuilder: (context, index) =>
@@ -211,27 +226,28 @@ class _LibraryScreenState extends State<LibraryScreen> {
                           controller,
                           groups[index],
                           allGroupsByName,
+                          currentMediaId,
                         ),
                       ),
               ),
               if (_showScrollToTopButton)
                 Positioned(
                   right: 16,
-                  bottom: controller.permissionState.scanAvailable ? 16 : 140,
+                  bottom: permissionState.scanAvailable ? 16 : 140,
                   child: FloatingActionButton.small(
                     heroTag: 'library_scroll_to_top',
                     onPressed: _scrollToTop,
                     child: const Icon(Icons.keyboard_arrow_up_rounded),
                   ),
                 ),
-              if (!controller.permissionState.scanAvailable)
+              if (!permissionState.scanAvailable)
                 Positioned(
                   left: 12,
                   right: 12,
                   bottom: 12,
                   child: _buildPermissionFloatingCard(
                     context,
-                    summary: controller.permissionState.summary,
+                    summary: permissionState.summary,
                   ),
                 ),
             ],
@@ -239,6 +255,29 @@ class _LibraryScreenState extends State<LibraryScreen> {
         ),
       ],
     );
+  }
+
+  List<_TrackGroup> _groupTracksCached(
+    List<AudioTrack> tracks, {
+    required bool useAllTracksCache,
+  }) {
+    final cachedSource =
+        useAllTracksCache ? _lastAllTracksSource : _lastTracksSource;
+    final cachedGroups =
+        useAllTracksCache ? _lastAllTrackGroups : _lastTrackGroups;
+    if (identical(cachedSource, tracks) && cachedGroups != null) {
+      return cachedGroups;
+    }
+
+    final groups = _groupTracks(tracks);
+    if (useAllTracksCache) {
+      _lastAllTracksSource = tracks;
+      _lastAllTrackGroups = groups;
+    } else {
+      _lastTracksSource = tracks;
+      _lastTrackGroups = groups;
+    }
+    return groups;
   }
 
   List<_TrackGroup> _groupTracks(List<AudioTrack> tracks) {
@@ -266,10 +305,14 @@ class _LibraryScreenState extends State<LibraryScreen> {
     PlayerController controller,
     _TrackGroup group,
     Map<String, List<AudioTrack>> allGroupsByName,
+    String? currentMediaId,
   ) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final folderTracks = allGroupsByName[group.name] ?? group.tracks;
+    final playIndexByPath = <String, int>{
+      for (var i = 0; i < folderTracks.length; i++) folderTracks[i].path: i,
+    };
 
     return Container(
       decoration: BoxDecoration(
@@ -335,8 +378,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                     splashRadius: 20,
                   ),
                   IconButton(
-                    tooltip:
-                        '删除此文件夹下全部音频',
+                    tooltip: '删除此文件夹下全部音频',
                     onPressed: () =>
                         _handleRemoveGroup(context, controller, group),
                     icon: Icon(
@@ -354,10 +396,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
               final track = entry.value;
               final isLast = entry.key == group.tracks.length - 1;
               final serial = entry.key + 1;
-              final playIndex = folderTracks.indexWhere(
-                (item) => item.path == track.path,
-              );
-              final isCurrent = controller.currentMediaItem?.id == track.path;
+              final playIndex = playIndexByPath[track.path] ?? -1;
+              final isCurrent = currentMediaId == track.path;
               final isUnplayable = controller.isTrackUnplayable(track.path);
               return Padding(
                 padding: EdgeInsets.only(bottom: isLast ? 0 : 8),
@@ -390,7 +430,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
       ),
     );
   }
-
   Future<void> _handleRemoveTrack(
     BuildContext context,
     PlayerController controller,
@@ -558,8 +597,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
     final duration =
         track.durationMs > 0 ? Duration(milliseconds: track.durationMs) : null;
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
+    return Container(
       decoration: BoxDecoration(
         color: isCurrent
             ? scheme.primaryContainer.withOpacity(0.55)

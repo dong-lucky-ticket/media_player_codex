@@ -44,6 +44,7 @@ class PlayerController extends ChangeNotifier {
   String? _scanStatusText;
   int _scanTaskId = 0;
   final Set<String> _unplayablePaths = <String>{};
+  int _unplayableVersion = 0;
   PlayerSettings _settings = const PlayerSettings();
   MediaItem? _currentMediaItem;
   PlaybackState _playbackState = PlaybackState();
@@ -82,6 +83,7 @@ class PlayerController extends ChangeNotifier {
       _playbackState.speed <= 0 ? 1.0 : _playbackState.speed;
   PermissionGuideState get permissionState => _permissionState;
   UiNotice? get notice => _notice;
+  int get unplayableVersion => _unplayableVersion;
 
   bool isTrackUnplayable(String path) => _unplayablePaths.contains(path);
 
@@ -305,7 +307,7 @@ class PlayerController extends ChangeNotifier {
     ]);
     await _audioHandler.setTracks(_activePlaylist);
     _pushNotice(
-      '已将 ${folderTracks.length} 首音频追加到  播放列表末尾。',
+      '已将 ${folderTracks.length} 首音频追加到 $folderName 播放列表末尾。',
       isError: false,
     );
   }
@@ -321,12 +323,16 @@ class PlayerController extends ChangeNotifier {
 
     final ok = await _audioHandler.playFromIndex(index);
     if (ok) {
-      _unplayablePaths.remove(track.path);
+      if (_unplayablePaths.remove(track.path)) {
+        _unplayableVersion += 1;
+      }
       notifyListeners();
       return;
     }
 
-    _unplayablePaths.add(track.path);
+    if (_unplayablePaths.add(track.path)) {
+      _unplayableVersion += 1;
+    }
     _pushNotice('该音频无法正常播放，可能文件已损坏或格式不受支持。', isError: true);
   }
 
@@ -381,7 +387,11 @@ class PlayerController extends ChangeNotifier {
   Future<void> _reloadTracks() async {
     _tracks = await _repository.getAllTracks();
     final activePaths = _tracks.map((track) => track.path).toSet();
+    final previousUnplayableCount = _unplayablePaths.length;
     _unplayablePaths.removeWhere((path) => !activePaths.contains(path));
+    if (_unplayablePaths.length != previousUnplayableCount) {
+      _unplayableVersion += 1;
+    }
 
     if (_activePlaylist.isNotEmpty) {
       final trackMap = {for (final track in _tracks) track.path: track};
