@@ -1,9 +1,9 @@
-﻿import 'package:flutter/material.dart';
-import 'package:path/path.dart' as p;
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../controllers/player_controller.dart';
 import '../../core/formatters.dart';
+import '../../core/track_sorter.dart';
 
 class PlayerScreen extends StatelessWidget {
   const PlayerScreen({super.key});
@@ -67,7 +67,9 @@ class PlayerScreen extends StatelessWidget {
 
     final progress = controller.position;
     final duration = controller.currentMediaItem?.duration ??
-        (track.durationMs > 0 ? Duration(milliseconds: track.durationMs) : null);
+        (track.durationMs > 0
+            ? Duration(milliseconds: track.durationMs)
+            : null);
     final max = duration?.inMilliseconds.toDouble() ?? 1;
     final value = progress.inMilliseconds.clamp(0, max.toInt()).toDouble();
     final isPlaying = controller.playbackState.playing;
@@ -84,7 +86,7 @@ class PlayerScreen extends StatelessWidget {
               context,
               title: track.title,
               album: track.album,
-              folder: _folderName(track.path),
+              folder: folderNameForTrackPath(track.path),
               path: track.path,
               duration: duration,
             );
@@ -97,7 +99,8 @@ class PlayerScreen extends StatelessWidget {
           max: max,
           progress: progress,
           duration: duration,
-          onChanged: (v) => controller.seekTo(Duration(milliseconds: v.toInt())),
+          onChanged: (v) =>
+              controller.seekTo(Duration(milliseconds: v.toInt())),
         ),
         const SizedBox(height: 10),
         _buildHintStrip(context),
@@ -110,7 +113,7 @@ class PlayerScreen extends StatelessWidget {
               context,
               title: track.title,
               album: track.album,
-              folder: _folderName(track.path),
+              folder: folderNameForTrackPath(track.path),
               path: track.path,
               duration: duration,
             );
@@ -159,7 +162,9 @@ class PlayerScreen extends StatelessWidget {
                     borderRadius: BorderRadius.circular(18),
                   ),
                   child: Icon(
-                    isPlaying ? Icons.graphic_eq_rounded : Icons.pause_circle_outline_rounded,
+                    isPlaying
+                        ? Icons.graphic_eq_rounded
+                        : Icons.pause_circle_outline_rounded,
                     size: 26,
                     color: scheme.onSecondaryContainer,
                   ),
@@ -196,7 +201,8 @@ class PlayerScreen extends StatelessWidget {
               decoration: BoxDecoration(
                 color: scheme.surfaceVariant.withOpacity(0.18),
                 borderRadius: BorderRadius.circular(999),
-                border: Border.all(color: scheme.outlineVariant.withOpacity(0.22)),
+                border:
+                    Border.all(color: scheme.outlineVariant.withOpacity(0.22)),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -341,7 +347,8 @@ class PlayerScreen extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final playing = controller.playbackState.playing;
-    final speedText = '${controller.playbackSpeed.toStringAsFixed(controller.playbackSpeed % 1 == 0 ? 0 : 2)}x';
+    final speedText =
+        '${controller.playbackSpeed.toStringAsFixed(controller.playbackSpeed % 1 == 0 ? 0 : 2)}x';
 
     return Container(
       decoration: BoxDecoration(
@@ -378,14 +385,17 @@ class PlayerScreen extends StatelessWidget {
                   child: FilledButton.tonalIcon(
                     onPressed: controller.togglePlayPause,
                     icon: Icon(
-                      playing ? Icons.pause_circle_rounded : Icons.play_circle_rounded,
+                      playing
+                          ? Icons.pause_circle_rounded
+                          : Icons.play_circle_rounded,
                       size: 24,
                     ),
                     label: Text(playing ? '暂停播放' : '开始播放'),
                     style: FilledButton.styleFrom(
                       minimumSize: const Size.fromHeight(48),
                       elevation: 0,
-                      backgroundColor: scheme.secondaryContainer.withOpacity(0.72),
+                      backgroundColor:
+                          scheme.secondaryContainer.withOpacity(0.72),
                       foregroundColor: scheme.onSurface,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16),
@@ -426,7 +436,8 @@ class PlayerScreen extends StatelessWidget {
                 style: OutlinedButton.styleFrom(
                   minimumSize: const Size.fromHeight(40),
                   foregroundColor: scheme.onSurfaceVariant,
-                  side: BorderSide(color: scheme.outlineVariant.withOpacity(0.24)),
+                  side: BorderSide(
+                      color: scheme.outlineVariant.withOpacity(0.24)),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14),
                   ),
@@ -482,7 +493,8 @@ class PlayerScreen extends StatelessWidget {
     );
   }
 
-  Future<void> _showSpeedSheet(BuildContext context, PlayerController controller) async {
+  Future<void> _showSpeedSheet(
+      BuildContext context, PlayerController controller) async {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final current = controller.playbackSpeed;
@@ -500,7 +512,8 @@ class PlayerScreen extends StatelessWidget {
               children: [
                 for (final speed in _speedOptions)
                   ChoiceChip(
-                    label: Text('${speed.toStringAsFixed(speed % 1 == 0 ? 0 : 2)}x'),
+                    label: Text(
+                        '${speed.toStringAsFixed(speed % 1 == 0 ? 0 : 2)}x'),
                     selected: (current - speed).abs() < 0.01,
                     onSelected: (_) {
                       controller.updatePlaybackSpeed(speed);
@@ -522,11 +535,12 @@ class PlayerScreen extends StatelessWidget {
     );
   }
 
-  Future<void> _showPlaylistSheet(BuildContext context, PlayerController controller) async {
+  Future<void> _showPlaylistSheet(
+      BuildContext context, PlayerController controller) async {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final tracks = controller.allTracks;
-    final currentId = controller.currentMediaItem?.id;
+    final tracks = controller.activePlaylist;
+    final currentPlaylistIndex = controller.currentPlaylistIndex;
 
     await showModalBottomSheet<void>(
       context: context,
@@ -566,7 +580,7 @@ class PlayerScreen extends StatelessWidget {
                     separatorBuilder: (_, __) => const SizedBox(height: 8),
                     itemBuilder: (context, index) {
                       final track = tracks[index];
-                      final isCurrent = track.path == currentId;
+                      final isCurrent = index == currentPlaylistIndex;
                       return Material(
                         color: isCurrent
                             ? scheme.primaryContainer.withOpacity(0.5)
@@ -575,8 +589,9 @@ class PlayerScreen extends StatelessWidget {
                         child: InkWell(
                           borderRadius: BorderRadius.circular(16),
                           onTap: () async {
+                            final navigator = Navigator.of(context);
                             await controller.playTrackAt(index);
-                            Navigator.of(context).pop();
+                            navigator.pop();
                           },
                           child: Padding(
                             padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
@@ -594,14 +609,17 @@ class PlayerScreen extends StatelessWidget {
                                     border: Border.all(
                                       color: isCurrent
                                           ? scheme.primary.withOpacity(0.15)
-                                          : scheme.outlineVariant.withOpacity(0.35),
+                                          : scheme.outlineVariant
+                                              .withOpacity(0.35),
                                     ),
                                   ),
                                   child: Text(
                                     '${index + 1}',
                                     style: theme.textTheme.labelSmall?.copyWith(
                                       fontWeight: FontWeight.w800,
-                                      color: isCurrent ? scheme.onPrimary : scheme.onSurface,
+                                      color: isCurrent
+                                          ? scheme.onPrimary
+                                          : scheme.onSurface,
                                     ),
                                   ),
                                 ),
@@ -620,7 +638,8 @@ class PlayerScreen extends StatelessWidget {
                                 Text(
                                   formatDuration(
                                     track.durationMs > 0
-                                        ? Duration(milliseconds: track.durationMs)
+                                        ? Duration(
+                                            milliseconds: track.durationMs)
                                         : null,
                                   ),
                                   style: theme.textTheme.labelSmall?.copyWith(
@@ -669,7 +688,8 @@ class PlayerScreen extends StatelessWidget {
               children: [
                 _buildDetailRow(context, label: '名称', value: title),
                 const SizedBox(height: 12),
-                _buildDetailRow(context, label: '时长', value: formatDuration(duration)),
+                _buildDetailRow(context,
+                    label: '时长', value: formatDuration(duration)),
                 const SizedBox(height: 12),
                 _buildDetailRow(context, label: '专辑', value: album),
                 const SizedBox(height: 12),
@@ -718,7 +738,8 @@ class PlayerScreen extends StatelessWidget {
   }) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final displayValue = value.trim().isEmpty || value == 'Unknown' ? '未知' : value;
+    final displayValue =
+        value.trim().isEmpty || value == 'Unknown' ? '未知' : value;
 
     return Container(
       width: double.infinity,
@@ -752,16 +773,4 @@ class PlayerScreen extends StatelessWidget {
       ),
     );
   }
-
-  String _folderName(String path) {
-    final directory = p.dirname(path.trim());
-    if (directory.isEmpty || directory == '.' || directory == path) {
-      return '未分类';
-    }
-    final name = p.basename(directory);
-    return name.isEmpty ? '未分类' : name;
-  }
 }
-
-
-

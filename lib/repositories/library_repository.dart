@@ -1,6 +1,7 @@
-﻿import 'package:path/path.dart' as p;
+import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
+import '../core/track_sorter.dart';
 import '../models/audio_track.dart';
 
 class LibraryRepository {
@@ -45,8 +46,9 @@ class LibraryRepository {
   }
 
   Future<List<AudioTrack>> getAllTracks() async {
-    final rows = await _database.query(_tracksTable, orderBy: 'title COLLATE NOCASE');
-    return rows.map(AudioTrack.fromMap).toList();
+    final rows = await _database.query(_tracksTable);
+    final tracks = rows.map(AudioTrack.fromMap).toList(growable: false);
+    return sortTracksByFolder(tracks);
   }
 
   Future<void> upsertTracks(List<AudioTrack> tracks) async {
@@ -99,7 +101,8 @@ class LibraryRepository {
     return PlayerSettings(
       skipStartSec: int.tryParse(values['skip_start_sec'] ?? '') ?? 0,
       skipEndSec: int.tryParse(values['skip_end_sec'] ?? '') ?? 0,
-      minScanDurationSec: int.tryParse(values['min_scan_duration_sec'] ?? '') ?? 0,
+      minScanDurationSec:
+          int.tryParse(values['min_scan_duration_sec'] ?? '') ?? 0,
       repeatMode: _parseRepeatMode(values['repeat_mode']),
     );
   }
@@ -129,6 +132,3 @@ class LibraryRepository {
     );
   }
 }
-
-
-

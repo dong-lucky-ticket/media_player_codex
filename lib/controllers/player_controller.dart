@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/foundation.dart';
@@ -36,6 +36,7 @@ class PlayerController extends ChangeNotifier {
   final List<StreamSubscription<dynamic>> _subscriptions = [];
 
   List<AudioTrack> _tracks = const [];
+  List<AudioTrack> _activePlaylist = const [];
   String _searchText = '';
   bool _isBusy = false;
   bool _scanInProgress = false;
@@ -66,6 +67,7 @@ class PlayerController extends ChangeNotifier {
   }
 
   List<AudioTrack> get allTracks => _tracks;
+  List<AudioTrack> get activePlaylist => _activePlaylist;
 
   bool get isBusy => _isBusy;
   bool get scanInProgress => _scanInProgress;
@@ -76,7 +78,8 @@ class PlayerController extends ChangeNotifier {
   PlaybackState get playbackState => _playbackState;
   MediaItem? get currentMediaItem => _currentMediaItem;
   Duration get position => _position;
-  double get playbackSpeed => _playbackState.speed <= 0 ? 1.0 : _playbackState.speed;
+  double get playbackSpeed =>
+      _playbackState.speed <= 0 ? 1.0 : _playbackState.speed;
   PermissionGuideState get permissionState => _permissionState;
   UiNotice? get notice => _notice;
 
@@ -86,6 +89,14 @@ class PlayerController extends ChangeNotifier {
     final currentId = _currentMediaItem?.id;
     if (currentId == null) return null;
     final index = _tracks.indexWhere((track) => track.path == currentId);
+    return index == -1 ? null : index;
+  }
+
+  int? get currentPlaylistIndex {
+    final currentId = _currentMediaItem?.id;
+    if (currentId == null) return null;
+    final index =
+        _activePlaylist.indexWhere((track) => track.path == currentId);
     return index == -1 ? null : index;
   }
 
@@ -105,7 +116,7 @@ class PlayerController extends ChangeNotifier {
     }
 
     await _audioHandler.applySettings(_settings);
-    await _audioHandler.setTracks(_tracks, preserveIndex: false);
+    await _audioHandler.setTracks(_activePlaylist, preserveIndex: false);
 
     _subscriptions
       ..add(_audioHandler.mediaItem.listen((item) {
@@ -152,11 +163,13 @@ class PlayerController extends ChangeNotifier {
       if (result.tracks.isNotEmpty) {
         await _repository.upsertTracks(result.tracks);
       }
-      await _repository.removeTracksBelowDuration(_settings.minScanDurationSec * 1000);
+      await _repository
+          .removeTracksBelowDuration(_settings.minScanDurationSec * 1000);
       await _reloadTracks();
       _permissionState = await _importService.getPermissionGuideState();
       if (result.message != null) {
-        _pushNotice(result.message!, isError: result.failed || result.permissionDenied);
+        _pushNotice(result.message!,
+            isError: result.failed || result.permissionDenied);
       }
     } catch (_) {
       _pushNotice('扫描失败，请稍后重试。', isError: true);
@@ -185,17 +198,20 @@ class PlayerController extends ChangeNotifier {
       final result = await _importService.pickFolderAndScan(
         minDurationMs: _settings.minScanDurationSec * 1000,
         onProgress: (progress) {
-          _scanStatusText = '已扫描 ${progress.processedCount} 项，发现 ${progress.foundCount} 个音频';
+          _scanStatusText =
+              '已扫描 ${progress.processedCount} 项，发现 ${progress.foundCount} 个音频';
           notifyListeners();
         },
       );
       if (result.tracks.isNotEmpty) {
         await _repository.upsertTracks(result.tracks);
       }
-      await _repository.removeTracksBelowDuration(_settings.minScanDurationSec * 1000);
+      await _repository
+          .removeTracksBelowDuration(_settings.minScanDurationSec * 1000);
       await _reloadTracks();
       if (result.message != null && !result.cancelled) {
-        _pushNotice(result.message!, isError: result.failed || result.permissionDenied);
+        _pushNotice(result.message!,
+            isError: result.failed || result.permissionDenied);
       }
     });
   }
@@ -209,10 +225,12 @@ class PlayerController extends ChangeNotifier {
       if (result.tracks.isNotEmpty) {
         await _repository.upsertTracks(result.tracks);
       }
-      await _repository.removeTracksBelowDuration(_settings.minScanDurationSec * 1000);
+      await _repository
+          .removeTracksBelowDuration(_settings.minScanDurationSec * 1000);
       await _reloadTracks();
       if (result.message != null && !result.cancelled) {
-        _pushNotice(result.message!, isError: result.failed || result.permissionDenied);
+        _pushNotice(result.message!,
+            isError: result.failed || result.permissionDenied);
       }
     });
   }
@@ -262,10 +280,23 @@ class PlayerController extends ChangeNotifier {
     await _reloadTracks();
   }
 
-  Future<void> playTrackAt(int index) async {
-    if (index < 0 || index >= _tracks.length) return;
+  Future<void> playFolderTrack(List<AudioTrack> folderTracks, int index) async {
+    if (index < 0 || index >= folderTracks.length) return;
 
-    final track = _tracks[index];
+    final playlist = List<AudioTrack>.unmodifiable(folderTracks);
+    final shouldResetQueue = !_isSamePlaylist(_activePlaylist, playlist);
+    if (shouldResetQueue) {
+      _activePlaylist = playlist;
+      await _audioHandler.setTracks(_activePlaylist, preserveIndex: false);
+    }
+
+    await playTrackAt(index);
+  }
+
+  Future<void> playTrackAt(int index) async {
+    if (index < 0 || index >= _activePlaylist.length) return;
+
+    final track = _activePlaylist[index];
     if (_unplayablePaths.contains(track.path)) {
       _pushNotice('该音频此前播放失败，请长按查看详情或移除该文件。', isError: true);
       return;
@@ -299,7 +330,8 @@ class PlayerController extends ChangeNotifier {
   Future<void> updatePlaybackSpeed(double speed) =>
       _audioHandler.setPlaybackSpeed(speed);
 
-  Future<void> updateSkipSettings({required int skipStartSec, required int skipEndSec}) async {
+  Future<void> updateSkipSettings(
+      {required int skipStartSec, required int skipEndSec}) async {
     final updated =
         _settings.copyWith(skipStartSec: skipStartSec, skipEndSec: skipEndSec);
     _settings = updated;
@@ -327,7 +359,16 @@ class PlayerController extends ChangeNotifier {
     _tracks = await _repository.getAllTracks();
     final activePaths = _tracks.map((track) => track.path).toSet();
     _unplayablePaths.removeWhere((path) => !activePaths.contains(path));
-    await _audioHandler.setTracks(_tracks);
+
+    if (_activePlaylist.isNotEmpty) {
+      final trackMap = {for (final track in _tracks) track.path: track};
+      _activePlaylist = _activePlaylist
+          .map((track) => trackMap[track.path])
+          .whereType<AudioTrack>()
+          .toList(growable: false);
+    }
+
+    await _audioHandler.setTracks(_activePlaylist);
     notifyListeners();
   }
 
@@ -346,6 +387,15 @@ class PlayerController extends ChangeNotifier {
     }
   }
 
+  bool _isSamePlaylist(List<AudioTrack> a, List<AudioTrack> b) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].path != b[i].path) return false;
+    }
+    return true;
+  }
+
   void _pushNotice(String message, {required bool isError}) {
     _noticeToken += 1;
     _notice = UiNotice(token: _noticeToken, message: message, isError: isError);
@@ -360,12 +410,3 @@ class PlayerController extends ChangeNotifier {
     super.dispose();
   }
 }
-
-
-
-
-
-
-
-
-

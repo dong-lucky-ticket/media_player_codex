@@ -1,9 +1,9 @@
-﻿import 'package:flutter/material.dart';
-import 'package:path/path.dart' as p;
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../controllers/player_controller.dart';
 import '../../core/formatters.dart';
+import '../../core/track_sorter.dart';
 import '../../models/audio_track.dart';
 import '../widgets/app_snack_bar.dart';
 
@@ -24,17 +24,17 @@ class _LibraryScreenState extends State<LibraryScreen> {
     final controller = context.watch<PlayerController>();
     final notice = controller.notice;
     final tracks = controller.tracks;
-    final trackOrder = <String, int>{
-      for (var i = 0; i < tracks.length; i++) tracks[i].path: i + 1,
-    };
     final groups = _groupTracks(tracks);
+    final allGroups = _groupTracks(controller.allTracks);
+    final allGroupsByName = {
+      for (final group in allGroups) group.name: group.tracks,
+    };
 
     if (notice != null && notice.token != _lastNoticeToken) {
       _lastNoticeToken = notice.token;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        final isPermissionNotice =
-            !controller.permissionState.scanAvailable &&
+        final isPermissionNotice = !controller.permissionState.scanAvailable &&
             notice.message == controller.permissionState.summary;
         if (isPermissionNotice) return;
         showAppSnackBar(
@@ -107,7 +107,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   context,
                   icon: Icons.audio_file_outlined,
                   label: '文件',
-                  onPressed: controller.isWorking ? null : controller.importFiles,
+                  onPressed:
+                      controller.isWorking ? null : controller.importFiles,
                 ),
               ),
             ],
@@ -155,7 +156,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 child: tracks.isEmpty
                     ? Padding(
                         padding: EdgeInsets.only(
-                          bottom: controller.permissionState.scanAvailable ? 0 : 124,
+                          bottom: controller.permissionState.scanAvailable
+                              ? 0
+                              : 124,
                         ),
                         child: const Center(child: Text('暂无音频，请先扫描或导入')),
                       )
@@ -167,12 +170,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
                           controller.permissionState.scanAvailable ? 12 : 136,
                         ),
                         itemCount: groups.length,
-                        separatorBuilder: (context, index) => const SizedBox(height: 12),
+                        separatorBuilder: (context, index) =>
+                            const SizedBox(height: 12),
                         itemBuilder: (context, index) => _buildGroupSection(
                           context,
                           controller,
                           groups[index],
-                          trackOrder,
+                          allGroupsByName,
                         ),
                       ),
               ),
@@ -196,30 +200,28 @@ class _LibraryScreenState extends State<LibraryScreen> {
   List<_TrackGroup> _groupTracks(List<AudioTrack> tracks) {
     final map = <String, List<AudioTrack>>{};
     for (final track in tracks) {
-      final folderName = _folderName(track.path);
+      final folderName = folderNameForTrackPath(track.path);
       map.putIfAbsent(folderName, () => <AudioTrack>[]).add(track);
     }
-    return map.entries
-        .map((entry) => _TrackGroup(name: entry.key, tracks: entry.value))
-        .toList(growable: false);
-  }
 
-  String _folderName(String path) {
-    final normalized = path.trim();
-    if (normalized.isEmpty) return '未分类';
-    final directory = p.dirname(normalized);
-    if (directory.isEmpty || directory == '.' || directory == normalized) {
-      return '未分类';
-    }
-    final name = p.basename(directory);
-    return name.isEmpty ? '未分类' : name;
+    final entries = map.entries.toList(growable: false)
+      ..sort((a, b) => a.key.toLowerCase().compareTo(b.key.toLowerCase()));
+
+    return entries
+        .map(
+          (entry) => _TrackGroup(
+            name: entry.key,
+            tracks: sortTracksByFolder(entry.value),
+          ),
+        )
+        .toList(growable: false);
   }
 
   Widget _buildGroupSection(
     BuildContext context,
     PlayerController controller,
     _TrackGroup group,
-    Map<String, int> trackOrder,
+    Map<String, List<AudioTrack>> allGroupsByName,
   ) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
@@ -293,7 +295,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
             ...group.tracks.asMap().entries.map((entry) {
               final track = entry.value;
               final isLast = entry.key == group.tracks.length - 1;
-              final serial = trackOrder[track.path] ?? 0;
+              final serial = entry.key + 1;
+              final folderTracks = allGroupsByName[group.name] ?? group.tracks;
+              final playIndex = folderTracks.indexWhere(
+                (item) => item.path == track.path,
+              );
               final isCurrent = controller.currentMediaItem?.id == track.path;
               final isUnplayable = controller.isTrackUnplayable(track.path);
               return Padding(
@@ -310,7 +316,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
                     index: serial,
                     isCurrent: isCurrent,
                     isUnplayable: isUnplayable,
-                    onTap: () => controller.playTrackAt(serial - 1),
+                    onTap: playIndex < 0
+                        ? null
+                        : () =>
+                            controller.playFolderTrack(folderTracks, playIndex),
                     onLongPress: () =>
                         _showTrackDetailsDialog(context, track, serial),
                     onRemove: () =>
@@ -371,7 +380,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   ) async {
     final duration =
         track.durationMs > 0 ? Duration(milliseconds: track.durationMs) : null;
-    final folder = _folderName(track.path);
+    final folder = folderNameForTrackPath(track.path);
 
     await showDialog<void>(
       context: context,
@@ -441,7 +450,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
           backgroundColor: isDanger
               ? scheme.errorContainer.withOpacity(0.9)
               : scheme.secondaryContainer.withOpacity(0.55),
-          foregroundColor: isDanger ? scheme.onErrorContainer : scheme.onSurface,
+          foregroundColor:
+              isDanger ? scheme.onErrorContainer : scheme.onSurface,
           side: BorderSide(
             color: isDanger
                 ? scheme.error.withOpacity(0.35)
@@ -481,7 +491,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
     required int index,
     required bool isCurrent,
     required bool isUnplayable,
-    required VoidCallback onTap,
+    required VoidCallback? onTap,
     required VoidCallback onLongPress,
     required VoidCallback onRemove,
   }) {
@@ -498,7 +508,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
             : scheme.surfaceVariant.withOpacity(0.18),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: isCurrent ? scheme.primary.withOpacity(0.7) : Colors.transparent,
+          color:
+              isCurrent ? scheme.primary.withOpacity(0.7) : Colors.transparent,
           width: 1.4,
         ),
         boxShadow: [
@@ -650,6 +661,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       ),
     );
   }
+
   Widget _buildPermissionFloatingCard(
     BuildContext context, {
     required String summary,
@@ -737,17 +749,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 }
 
-
 class _TrackGroup {
   const _TrackGroup({required this.name, required this.tracks});
 
   final String name;
   final List<AudioTrack> tracks;
 }
-
-
-
-
-
-
-
