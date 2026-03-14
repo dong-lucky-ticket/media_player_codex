@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
 void showAppSnackBar(
   BuildContext context, {
@@ -7,7 +7,6 @@ void showAppSnackBar(
   String? actionLabel,
   VoidCallback? onAction,
 }) {
-  final scheme = Theme.of(context).colorScheme;
   final messenger = ScaffoldMessenger.of(context);
 
   final backgroundColor = isError
@@ -19,7 +18,16 @@ void showAppSnackBar(
   final foregroundColor = isError
       ? const Color(0xFF7A1F1F)
       : const Color(0xFF1E5B43);
-  final icon = isError ? Icons.error_outline_rounded : Icons.check_circle_outline_rounded;
+  final actionBackgroundColor = isError
+      ? const Color(0xFFF7D8D8)
+      : const Color(0xFFD6ECDF);
+  final actionBorderColor = isError
+      ? const Color(0xFFD99B9B)
+      : const Color(0xFFA3CFBB);
+  final icon = isError
+      ? Icons.error_outline_rounded
+      : Icons.check_circle_outline_rounded;
+  final hasAction = actionLabel != null && onAction != null;
 
   messenger.hideCurrentSnackBar();
   messenger.showSnackBar(
@@ -57,16 +65,38 @@ void showAppSnackBar(
                 ),
               ),
             ),
+            if (hasAction) ...[
+              const SizedBox(width: 10),
+              TextButton(
+                onPressed: () {
+                  messenger.hideCurrentSnackBar();
+                  onAction();
+                },
+                style: TextButton.styleFrom(
+                  minimumSize: const Size(0, 34),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.compact,
+                  foregroundColor: foregroundColor,
+                  backgroundColor: actionBackgroundColor,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    side: BorderSide(color: actionBorderColor),
+                  ),
+                  textStyle: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                child: Text(actionLabel),
+              ),
+            ],
           ],
         ),
       ),
-      action: actionLabel == null || onAction == null
-          ? null
-          : SnackBarAction(
-              label: actionLabel,
-              textColor: isError ? scheme.error : scheme.primary,
-              onPressed: onAction,
-            ),
     ),
   );
 }
