@@ -651,16 +651,42 @@ class PlayerScreen extends StatelessWidget {
       BuildContext context, PlayerController controller) async {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final currentItemKey = GlobalKey();
+    var didAutoScrollToCurrent = false;
 
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
       builder: (sheetContext) {
-        return Consumer<PlayerController>(
-          builder: (context, playlistController, _) {
-            final tracks = playlistController.activePlaylist;
-            final currentPlaylistIndex = playlistController.currentPlaylistIndex;
+        return Builder(
+          builder: (context) {
+            final tracks = context.select((PlayerController c) => c.activePlaylist);
+            final currentMediaId =
+                context.select((PlayerController c) => c.currentMediaItem?.id);
+            final currentPlaylistIndex = currentMediaId == null
+                ? null
+                : tracks.indexWhere((track) => track.path == currentMediaId);
+            final normalizedCurrentPlaylistIndex =
+                currentPlaylistIndex != null && currentPlaylistIndex >= 0
+                    ? currentPlaylistIndex
+                    : null;
+
+            if (!didAutoScrollToCurrent &&
+                normalizedCurrentPlaylistIndex != null &&
+                normalizedCurrentPlaylistIndex < tracks.length) {
+              didAutoScrollToCurrent = true;
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                final currentContext = currentItemKey.currentContext;
+                if (currentContext == null) return;
+                Scrollable.ensureVisible(
+                  currentContext,
+                  duration: const Duration(milliseconds: 260),
+                  curve: Curves.easeOutCubic,
+                  alignment: 0.32,
+                );
+              });
+            }
 
             return SafeArea(
               child: SizedBox(
@@ -689,7 +715,7 @@ class PlayerScreen extends StatelessWidget {
                             onPressed: tracks.isEmpty
                                 ? null
                                 : () async {
-                                    await playlistController.clearActivePlaylist();
+                                    await controller.clearActivePlaylist();
                                     if (sheetContext.mounted) {
                                       Navigator.of(sheetContext).pop();
                                     }
@@ -716,21 +742,47 @@ class PlayerScreen extends StatelessWidget {
                               separatorBuilder: (_, __) => const SizedBox(height: 8),
                               itemBuilder: (context, index) {
                                 final track = tracks[index];
-                                final isCurrent = index == currentPlaylistIndex;
+                                final isCurrent =
+                                    index == normalizedCurrentPlaylistIndex;
+                                final isPlayed =
+                                    normalizedCurrentPlaylistIndex != null &&
+                                    index < normalizedCurrentPlaylistIndex;
+                                final itemKey = isCurrent ? currentItemKey : null;
+                                final tileColor = isCurrent
+                                    ? scheme.primaryContainer.withOpacity(0.5)
+                                    : isPlayed
+                                        ? scheme.surfaceVariant.withOpacity(0.08)
+                                        : scheme.surfaceVariant.withOpacity(0.14);
+                                final titleColor = isCurrent
+                                    ? scheme.onSurface
+                                    : isPlayed
+                                        ? scheme.onSurfaceVariant.withOpacity(0.72)
+                                        : null;
+                                final indexColor = isCurrent
+                                    ? scheme.primary
+                                    : isPlayed
+                                        ? scheme.surface.withOpacity(0.72)
+                                        : scheme.surface;
+                                final indexTextColor = isCurrent
+                                    ? scheme.onPrimary
+                                    : isPlayed
+                                        ? scheme.onSurfaceVariant.withOpacity(0.74)
+                                        : scheme.onSurface;
+
                                 return Material(
-                                  color: isCurrent
-                                      ? scheme.primaryContainer.withOpacity(0.5)
-                                      : scheme.surfaceVariant.withOpacity(0.14),
+                                  key: itemKey,
+                                  color: tileColor,
                                   borderRadius: BorderRadius.circular(16),
                                   child: InkWell(
                                     borderRadius: BorderRadius.circular(16),
                                     onTap: () async {
                                       final navigator = Navigator.of(sheetContext);
-                                      await playlistController.playTrackAt(index);
+                                      await controller.playTrackAt(index);
                                       navigator.pop();
                                     },
                                     child: Padding(
-                                      padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+                                      padding:
+                                          const EdgeInsets.fromLTRB(12, 10, 8, 10),
                                       child: Row(
                                         children: [
                                           Container(
@@ -738,24 +790,24 @@ class PlayerScreen extends StatelessWidget {
                                             height: 30,
                                             alignment: Alignment.center,
                                             decoration: BoxDecoration(
-                                              color: isCurrent
-                                                  ? scheme.primary
-                                                  : scheme.surface,
+                                              color: indexColor,
                                               borderRadius: BorderRadius.circular(10),
                                               border: Border.all(
                                                 color: isCurrent
                                                     ? scheme.primary.withOpacity(0.15)
-                                                    : scheme.outlineVariant
-                                                        .withOpacity(0.35),
+                                                    : isPlayed
+                                                        ? scheme.outlineVariant
+                                                            .withOpacity(0.18)
+                                                        : scheme.outlineVariant
+                                                            .withOpacity(0.35),
                                               ),
                                             ),
                                             child: Text(
                                               '${index + 1}',
-                                              style: theme.textTheme.labelSmall?.copyWith(
+                                              style:
+                                                  theme.textTheme.labelSmall?.copyWith(
                                                 fontWeight: FontWeight.w800,
-                                                color: isCurrent
-                                                    ? scheme.onPrimary
-                                                    : scheme.onSurface,
+                                                color: indexTextColor,
                                               ),
                                             ),
                                           ),
@@ -767,6 +819,7 @@ class PlayerScreen extends StatelessWidget {
                                               overflow: TextOverflow.ellipsis,
                                               style: theme.textTheme.titleSmall?.copyWith(
                                                 fontWeight: FontWeight.w700,
+                                                color: titleColor,
                                               ),
                                             ),
                                           ),
@@ -779,8 +832,12 @@ class PlayerScreen extends StatelessWidget {
                                                     )
                                                   : null,
                                             ),
-                                            style: theme.textTheme.labelSmall?.copyWith(
-                                              color: scheme.onSurfaceVariant,
+                                            style:
+                                                theme.textTheme.labelSmall?.copyWith(
+                                              color: isPlayed
+                                                  ? scheme.onSurfaceVariant
+                                                      .withOpacity(0.68)
+                                                  : scheme.onSurfaceVariant,
                                               fontWeight: FontWeight.w700,
                                             ),
                                           ),
@@ -790,12 +847,13 @@ class PlayerScreen extends StatelessWidget {
                                             visualDensity: VisualDensity.compact,
                                             onPressed: () async {
                                               final removedTrack = track;
-                                              await playlistController
+                                              await controller
                                                   .removeTrackFromActivePlaylist(index);
                                               if (!sheetContext.mounted) return;
                                               showAppSnackBar(
                                                 sheetContext,
-                                                message: '已从播放列表移除 ${removedTrack.title}',
+                                                message:
+                                                    '已从播放列表移除 ${removedTrack.title}',
                                                 isError: false,
                                               );
                                             },
@@ -809,8 +867,7 @@ class PlayerScreen extends StatelessWidget {
                                       ),
                                     ),
                                   ),
-                                );
-                              },
+                                );                              },
                             ),
                     ),
                   ],
@@ -934,5 +991,14 @@ class PlayerScreen extends StatelessWidget {
     );
   }
 }
+
+
+
+
+
+
+
+
+
 
 
