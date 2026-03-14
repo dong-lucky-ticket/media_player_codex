@@ -7,3 +7,4 @@ android/local.properties
 *.iml
 .idea/
 .vscode/
+.flutter-plugins-dependencies
