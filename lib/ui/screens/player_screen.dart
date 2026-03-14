@@ -569,6 +569,18 @@ class PlayerScreen extends StatelessWidget {
                           color: scheme.onSurfaceVariant,
                         ),
                       ),
+                      const SizedBox(width: 8),
+                      TextButton(
+                        onPressed: tracks.isEmpty
+                            ? null
+                            : () async {
+                                await controller.clearActivePlaylist();
+                                if (context.mounted) {
+                                  Navigator.of(context).pop();
+                                }
+                              },
+                        child: const Text('清空'),
+                      ),
                     ],
                   ),
                 ),

@@ -313,6 +313,12 @@ class PlayerController extends ChangeNotifier {
     _pushNotice('该音频无法正常播放，可能文件已损坏或格式不受支持。', isError: true);
   }
 
+  Future<void> clearActivePlaylist() async {
+    _activePlaylist = const [];
+    await _audioHandler.setTracks(_activePlaylist, preserveIndex: false);
+    notifyListeners();
+  }
+
   Future<void> togglePlayPause() async {
     if (_playbackState.playing) {
       await _audioHandler.pause();
