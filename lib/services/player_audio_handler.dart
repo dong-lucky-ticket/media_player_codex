@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:audio_service/audio_service.dart';
 import 'package:just_audio/just_audio.dart';
@@ -6,6 +6,9 @@ import 'package:just_audio/just_audio.dart';
 import '../models/audio_track.dart';
 
 class PlayerAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
+  static final Uri _fallbackArtUri =
+      Uri.parse('android.resource://com.example.player/mipmap/ic_launcher');
+
   PlayerAudioHandler._(this._player) {
     _player.playbackEventStream.listen((_) => _broadcastState());
     _player.currentIndexStream.listen(_updateCurrentMediaItem);
@@ -30,7 +33,7 @@ class PlayerAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
     final handler = PlayerAudioHandler._(AudioPlayer());
     await AudioService.init(
       builder: () => handler,
-      config: AudioServiceConfig(
+      config: const AudioServiceConfig(
         androidNotificationChannelId: 'com.example.player.channel.playback',
         androidNotificationChannelName: 'Playback',
         androidNotificationIcon: 'drawable/ic_stat_music_note',
@@ -53,6 +56,7 @@ class PlayerAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
             artist: track.artist,
             album: track.album,
             duration: track.durationMs > 0 ? Duration(milliseconds: track.durationMs) : null,
+            artUri: _mediaArtUriForTrack(track),
             extras: {'path': track.path},
           ),
         )
@@ -108,6 +112,13 @@ class PlayerAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
     if (wasPlaying) {
       await play();
     }
+  }
+
+  Uri _mediaArtUriForTrack(AudioTrack track) {
+    final rawArtUri = track.artUri?.trim();
+    if (rawArtUri == null || rawArtUri.isEmpty) return _fallbackArtUri;
+
+    return Uri.tryParse(rawArtUri) ?? _fallbackArtUri;
   }
 
   Future<void> applySettings(PlayerSettings settings) async {
