@@ -41,8 +41,15 @@ android {
             signingConfig signingConfigs.debug
         }
     }
+
+    applicationVariants.all { variant ->
+        variant.outputs.all {
+            outputFileName = "player_v${flutterVersionName}-${variant.buildType.name}.apk"
+        }
+    }
 }
 
 flutter {
     source '../..'
 }
+
