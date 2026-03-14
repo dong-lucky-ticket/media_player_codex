@@ -60,7 +60,10 @@ class _HomeScreenState extends State<HomeScreen> {
       body: IndexedStack(
         index: _currentTab,
         children: [
-          LibraryScreen(onOpenPermissionGuide: _openPermissionGuide),
+          LibraryScreen(
+            onOpenPermissionGuide: _openPermissionGuide,
+            bottomOverlayHeight: showMiniPlayer ? kMiniPlayerBarReservedHeight : 0,
+          ),
           const PlayerScreen(),
           const SettingsScreen(),
         ],
@@ -113,4 +116,5 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 }
+
 

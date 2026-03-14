@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../controllers/player_controller.dart';
@@ -8,9 +8,14 @@ import '../../models/audio_track.dart';
 import '../widgets/app_snack_bar.dart';
 
 class LibraryScreen extends StatefulWidget {
-  const LibraryScreen({super.key, required this.onOpenPermissionGuide});
+  const LibraryScreen({
+    super.key,
+    required this.onOpenPermissionGuide,
+    this.bottomOverlayHeight = 0,
+  });
 
   final VoidCallback onOpenPermissionGuide;
+  final double bottomOverlayHeight;
 
   @override
   State<LibraryScreen> createState() => _LibraryScreenState();
@@ -242,7 +247,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
               if (_showScrollToTopButton)
                 Positioned(
                   right: 16,
-                  bottom: permissionState.scanAvailable ? 16 : 140,
+                  bottom: (permissionState.scanAvailable ? 16 : 140) + widget.bottomOverlayHeight,
                   child: FloatingActionButton.small(
                     heroTag: 'library_scroll_to_top',
                     onPressed: _scrollToTop,
@@ -896,3 +901,4 @@ class _TrackGroup {
   final String name;
   final List<AudioTrack> tracks;
 }
+

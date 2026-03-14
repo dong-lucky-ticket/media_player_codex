@@ -4,6 +4,9 @@ import 'package:provider/provider.dart';
 import '../../controllers/player_controller.dart';
 import '../../core/formatters.dart';
 
+const double kMiniPlayerBarReservedHeight = 84;
+
+
 class MiniPlayerBar extends StatelessWidget {
   const MiniPlayerBar({
     super.key,
@@ -131,3 +134,6 @@ class MiniPlayerBar extends StatelessWidget {
     );
   }
 }
+
+
+
