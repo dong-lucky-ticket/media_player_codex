@@ -51,7 +51,11 @@ class PlayerAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
 
   Stream<String> get completedTrackStream => _completedTrackController.stream;
 
-  Future<void> setTracks(List<AudioTrack> tracks, {bool preserveIndex = true}) async {
+  Future<void> setTracks(
+    List<AudioTrack> tracks, {
+    bool preserveIndex = true,
+    bool selectFirstWhenIdle = false,
+  }) async {
     final wasPlaying = _player.playing;
     final previousPosition = _player.position;
 
@@ -82,7 +86,8 @@ class PlayerAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
         ? previousPosition
         : Duration(seconds: _skipStartSec);
 
-    _suppressImplicitSelection = !wasPlaying && !hasRestorableSelection;
+    _suppressImplicitSelection =
+        !wasPlaying && !hasRestorableSelection && !selectFirstWhenIdle;
     queue.add(items);
 
     if (items.isEmpty) {

@@ -317,7 +317,10 @@ class PlayerController extends ChangeNotifier {
       ..._activePlaylist,
       ...folderTracks,
     ]);
-    await _audioHandler.setTracks(_activePlaylist);
+    await _audioHandler.setTracks(
+      _activePlaylist,
+      selectFirstWhenIdle: true,
+    );
     _pushNotice(
       '已将 ${folderTracks.length} 首音频追加到 $folderName 播放列表末尾。',
       isError: false,
