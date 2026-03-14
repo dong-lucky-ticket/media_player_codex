@@ -249,7 +249,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
     }
 
     final entries = map.entries.toList(growable: false)
-      ..sort((a, b) => a.key.toLowerCase().compareTo(b.key.toLowerCase()));
+      ..sort((a, b) => compareNaturalText(a.key, b.key));
 
     return entries
         .map(
