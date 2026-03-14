@@ -17,7 +17,35 @@ class LibraryScreen extends StatefulWidget {
 }
 
 class _LibraryScreenState extends State<LibraryScreen> {
+  static const _scrollToTopThreshold = 320.0;
+
   int _lastNoticeToken = 0;
+  late final ScrollController _scrollController;
+  bool _showScrollToTopButton = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController()..addListener(_handleScroll);
+  }
+
+  void _handleScroll() {
+    if (!_scrollController.hasClients) return;
+    final shouldShow = _scrollController.offset >= _scrollToTopThreshold;
+    if (shouldShow == _showScrollToTopButton) return;
+    setState(() {
+      _showScrollToTopButton = shouldShow;
+    });
+  }
+
+  Future<void> _scrollToTop() async {
+    if (!_scrollController.hasClients) return;
+    await _scrollController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOutCubic,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -55,7 +83,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
               decoration: InputDecoration(
                 isDense: true,
                 prefixIcon: const Icon(Icons.search, size: 18),
-                hintText: '搜索歌曲名称或路径',
+                hintText:
+                    '搜索歌曲名称或路径',
                 filled: true,
                 fillColor: Theme.of(context)
                     .colorScheme
@@ -84,7 +113,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   icon: controller.scanInProgress
                       ? Icons.stop_circle_outlined
                       : Icons.blur_circular,
-                  label: controller.scanInProgress ? '停止扫描' : '扫描',
+                  label: controller.scanInProgress
+                      ? '停止自动扫描'
+                      : '自动扫描',
                   onPressed: controller.scanInProgress
                       ? controller.stopScan
                       : (controller.isWorking ? null : controller.runAutoScan),
@@ -96,7 +127,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 child: _buildActionButton(
                   context,
                   icon: Icons.folder_outlined,
-                  label: '文件夹',
+                  label: '导入文件夹',
                   onPressed:
                       controller.isWorking ? null : controller.importFromFolder,
                 ),
@@ -106,7 +137,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 child: _buildActionButton(
                   context,
                   icon: Icons.audio_file_outlined,
-                  label: '文件',
+                  label: '导入文件',
                   onPressed:
                       controller.isWorking ? null : controller.importFiles,
                 ),
@@ -160,9 +191,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
                               ? 0
                               : 124,
                         ),
-                        child: const Center(child: Text('暂无音频，请先扫描或导入')),
+                        child: const Center(
+                            child: Text(
+                                '暂无音频，请先扫描或导入')),
                       )
                     : ListView.separated(
+                        controller: _scrollController,
                         padding: EdgeInsets.fromLTRB(
                           12,
                           0,
@@ -180,6 +214,16 @@ class _LibraryScreenState extends State<LibraryScreen> {
                         ),
                       ),
               ),
+              if (_showScrollToTopButton)
+                Positioned(
+                  right: 16,
+                  bottom: controller.permissionState.scanAvailable ? 16 : 140,
+                  child: FloatingActionButton.small(
+                    heroTag: 'library_scroll_to_top',
+                    onPressed: _scrollToTop,
+                    child: const Icon(Icons.keyboard_arrow_up_rounded),
+                  ),
+                ),
               if (!controller.permissionState.scanAvailable)
                 Positioned(
                   left: 12,
@@ -278,7 +322,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
                     ),
                   ),
                   IconButton(
-                    tooltip: '删除此文件夹下全部音频',
+                    tooltip:
+                        '删除此文件夹下全部音频',
                     onPressed: () =>
                         _handleRemoveGroup(context, controller, group),
                     icon: Icon(
@@ -364,7 +409,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
     showAppSnackBar(
       context,
-      message: '已移除 ${group.name} 下的 ${removedTracks.length} 项',
+      message:
+          '已移除 ${group.name} 下的 ${removedTracks.length} 项',
       isError: false,
       actionLabel: '撤销',
       onAction: () {
@@ -392,9 +438,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildDetailRow('名称', track.title),
+                _buildDetailRow('标题', track.title),
                 _buildDetailRow('时长', formatDuration(duration)),
-                _buildDetailRow('作者', track.artist),
+                _buildDetailRow('艺术家', track.artist),
                 _buildDetailRow('专辑', track.album),
                 _buildDetailRow('文件夹', folder),
                 _buildDetailRow('路径', track.path),
@@ -568,7 +614,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                             ),
                           ),
                           child: Text(
-                            '异常',
+                            '已移除',
                             style: theme.textTheme.labelSmall?.copyWith(
                               fontWeight: FontWeight.w800,
                               color: scheme.onErrorContainer,
@@ -726,7 +772,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
             FilledButton.tonalIcon(
               onPressed: widget.onOpenPermissionGuide,
               icon: const Icon(Icons.arrow_forward_rounded, size: 18),
-              label: const Text('去授权'),
+              label: const Text('前往设置'),
               style: FilledButton.styleFrom(
                 minimumSize: const Size(0, 40),
                 padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -746,6 +792,14 @@ class _LibraryScreenState extends State<LibraryScreen> {
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _scrollController
+      ..removeListener(_handleScroll)
+      ..dispose();
+    super.dispose();
   }
 }
 
