@@ -293,6 +293,23 @@ class PlayerController extends ChangeNotifier {
     await playTrackAt(index);
   }
 
+  Future<void> appendFolderTracks(
+    String folderName,
+    List<AudioTrack> folderTracks,
+  ) async {
+    if (folderTracks.isEmpty) return;
+
+    _activePlaylist = List<AudioTrack>.unmodifiable([
+      ..._activePlaylist,
+      ...folderTracks,
+    ]);
+    await _audioHandler.setTracks(_activePlaylist);
+    _pushNotice(
+      '已将 ${folderTracks.length} 首音频追加到  播放列表末尾。',
+      isError: false,
+    );
+  }
+
   Future<void> playTrackAt(int index) async {
     if (index < 0 || index >= _activePlaylist.length) return;
 

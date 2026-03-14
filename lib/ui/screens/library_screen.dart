@@ -269,6 +269,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   ) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final folderTracks = allGroupsByName[group.name] ?? group.tracks;
 
     return Container(
       decoration: BoxDecoration(
@@ -313,13 +314,25 @@ class _LibraryScreenState extends State<LibraryScreen> {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          '${group.tracks.length} 个音频',
+                          '${folderTracks.length} 个音频',
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: scheme.onSurfaceVariant,
                           ),
                         ),
                       ],
                     ),
+                  ),
+                  IconButton(
+                    tooltip: '追加到播放列表末尾',
+                    onPressed: () =>
+                        controller.appendFolderTracks(group.name, folderTracks),
+                    icon: Icon(
+                      Icons.playlist_add_rounded,
+                      size: 20,
+                      color: scheme.primary.withOpacity(0.82),
+                    ),
+                    visualDensity: VisualDensity.compact,
+                    splashRadius: 20,
                   ),
                   IconButton(
                     tooltip:
@@ -341,7 +354,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
               final track = entry.value;
               final isLast = entry.key == group.tracks.length - 1;
               final serial = entry.key + 1;
-              final folderTracks = allGroupsByName[group.name] ?? group.tracks;
               final playIndex = folderTracks.indexWhere(
                 (item) => item.path == track.path,
               );
