@@ -7,8 +7,6 @@ const _kAppSnackBarDisplayDuration = Duration(milliseconds: 3200);
 const _kAppSnackBarTransitionDuration = Duration(milliseconds: 220);
 const _kAppSnackBarMiniPlayerGap = 4.0;
 final ValueNotifier<double> _kZeroOverlayInset = ValueNotifier<double>(0);
-final GlobalKey<_AppSnackBarOverlayState> _appSnackBarKey =
-    GlobalKey<_AppSnackBarOverlayState>();
 _ActiveAppSnackBar? _activeAppSnackBar;
 
 class AppOverlayInset extends InheritedNotifier<ValueNotifier<double>> {
@@ -39,10 +37,11 @@ void showAppSnackBar(
   _activeAppSnackBar?.dismiss(immediate: true);
 
   final overlayInset = AppOverlayInset.maybeOf(context) ?? _kZeroOverlayInset;
+  final overlayKey = GlobalKey<_AppSnackBarOverlayState>();
   late final OverlayEntry entry;
   entry = OverlayEntry(
     builder: (_) => _AppSnackBarOverlay(
-      key: _appSnackBarKey,
+      key: overlayKey,
       message: message,
       isError: isError,
       actionLabel: actionLabel,
@@ -58,18 +57,19 @@ void showAppSnackBar(
     ),
   );
 
-  _activeAppSnackBar = _ActiveAppSnackBar(entry);
+  _activeAppSnackBar = _ActiveAppSnackBar(entry, overlayKey);
   overlay.insert(entry);
 }
 
 class _ActiveAppSnackBar {
-  const _ActiveAppSnackBar(this.entry);
+  const _ActiveAppSnackBar(this.entry, this.key);
 
   final OverlayEntry entry;
+  final GlobalKey<_AppSnackBarOverlayState> key;
 
   void dismiss({bool immediate = false}) {
     if (!entry.mounted) return;
-    _appSnackBarKey.currentState?.dismiss(immediate: immediate);
+    key.currentState?.dismiss(immediate: immediate);
   }
 }
 
@@ -259,6 +259,8 @@ class _AppSnackBarOverlayState extends State<_AppSnackBarOverlay>
     );
   }
 }
+
+
 
 
 

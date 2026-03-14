@@ -28,6 +28,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   late final ScrollController _scrollController;
   bool _showScrollToTopButton = false;
   final Set<String> _collapsedGroupNames = <String>{};
+  final Set<String> _removingTrackPaths = <String>{};
   List<AudioTrack>? _lastTracksSource;
   List<_TrackGroup>? _lastTrackGroups;
   List<AudioTrack>? _lastAllTracksSource;
@@ -323,7 +324,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
   ) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final folderTracks = allGroupsByName[group.name] ?? group.tracks;
+    final folderTracks = (allGroupsByName[group.name] ?? group.tracks)
+        .where((track) => !_removingTrackPaths.contains(track.path))
+        .toList(growable: false);
+    final visibleTracks = group.tracks
+        .where((track) => !_removingTrackPaths.contains(track.path))
+        .toList(growable: false);
     final isCollapsed = _collapsedGroupNames.contains(group.name);
     final playIndexByPath = <String, int>{
       for (var i = 0; i < folderTracks.length; i++) folderTracks[i].path: i,
@@ -385,7 +391,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                                     ),
                                     const SizedBox(height: 2),
                                     Text(
-                                      '${folderTracks.length} 个音频',
+                                      '${visibleTracks.length} 个音频',
                                       style: theme.textTheme.bodySmall?.copyWith(
                                         color: scheme.onSurfaceVariant,
                                       ),
@@ -434,9 +440,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 ],
               ),
             ),
-            if (!isCollapsed) ...group.tracks.asMap().entries.map((entry) {
+            if (!isCollapsed) ...visibleTracks.asMap().entries.map((entry) {
               final track = entry.value;
-              final isLast = entry.key == group.tracks.length - 1;
+              final isLast = entry.key == visibleTracks.length - 1;
               final serial = entry.key + 1;
               final playIndex = playIndexByPath[track.path] ?? -1;
               final isCurrent = currentMediaId == track.path;
@@ -477,18 +483,37 @@ class _LibraryScreenState extends State<LibraryScreen> {
     PlayerController controller,
     AudioTrack track,
   ) async {
-    await controller.removeTrack(track.path);
+    if (_removingTrackPaths.contains(track.path)) return;
+
+    setState(() {
+      _removingTrackPaths.add(track.path);
+    });
+
+    try {
+      await controller.removeTrack(track.path);
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _removingTrackPaths.remove(track.path);
+        });
+      }
+      rethrow;
+    }
+
     if (!mounted) return;
+    setState(() {
+      _removingTrackPaths.remove(track.path);
+    });
 
     showAppSnackBar(
       context,
       message: '已移除 ${track.title}',
-
       isError: false,
       actionLabel: '撤销',
       onAction: () {
         controller.restoreTrack(track);
-      },    );
+      },
+    );
   }
 
   Future<void> _handleRemoveGroup(
@@ -900,6 +925,9 @@ class _TrackGroup {
   final String name;
   final List<AudioTrack> tracks;
 }
+
+
+
 
 
 
