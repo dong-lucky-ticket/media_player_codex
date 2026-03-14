@@ -8,7 +8,9 @@ import '../../core/track_sorter.dart';
 class PlayerScreen extends StatelessWidget {
   const PlayerScreen({super.key});
 
-  static const _speedOptions = <double>[0.75, 1.0, 1.25, 1.5, 2.0];
+  static const _minPlaybackSpeed = 0.5;
+  static const _maxPlaybackSpeed = 2.0;
+  static const _playbackSpeedDivisions = 15;
 
   @override
   Widget build(BuildContext context) {
@@ -350,8 +352,7 @@ class PlayerScreen extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final playing = controller.playbackState.playing;
-    final speedText =
-        '${controller.playbackSpeed.toStringAsFixed(controller.playbackSpeed % 1 == 0 ? 0 : 2)}x';
+    final speedText = _formatPlaybackSpeed(controller.playbackSpeed);
 
     return Container(
       decoration: BoxDecoration(
@@ -500,44 +501,151 @@ class PlayerScreen extends StatelessWidget {
       BuildContext context, PlayerController controller) async {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final current = controller.playbackSpeed;
+    var speed = controller.playbackSpeed.clamp(
+      _minPlaybackSpeed,
+      _maxPlaybackSpeed,
+    );
 
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
       builder: (context) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-            child: Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: [
-                for (final speed in _speedOptions)
-                  ChoiceChip(
-                    label: Text(
-                        '${speed.toStringAsFixed(speed % 1 == 0 ? 0 : 2)}x'),
-                    selected: (current - speed).abs() < 0.01,
-                    onSelected: (_) {
-                      controller.updatePlaybackSpeed(speed);
-                      Navigator.of(context).pop();
-                    },
-                    labelStyle: theme.textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: (current - speed).abs() < 0.01
-                          ? scheme.onSecondaryContainer
-                          : scheme.onSurface,
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          '播放速度',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          _formatPlaybackSpeed(speed),
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            color: scheme.primary,
+                          ),
+                        ),
+                      ],
                     ),
-                    selectedColor: scheme.secondaryContainer,
+                    const SizedBox(height: 8),
+                    Text(
+                      '拖动进度条调整倍速，范围 0.5x 到 2.0x。',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                        height: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SliderTheme(
+                      data: SliderTheme.of(context).copyWith(
+                        trackHeight: 4,
+                        thumbShape:
+                            const RoundSliderThumbShape(enabledThumbRadius: 8),
+                        overlayShape:
+                            const RoundSliderOverlayShape(overlayRadius: 18),
+                      ),
+                      child: Slider(
+                        min: _minPlaybackSpeed,
+                        max: _maxPlaybackSpeed,
+                        divisions: _playbackSpeedDivisions,
+                        label: _formatPlaybackSpeed(speed),
+                        value: speed,
+                        onChanged: (value) {
+                          final rounded =
+                              (value * 10).roundToDouble() / 10;
+                          setModalState(() {
+                            speed = rounded;
+                          });
+                          controller.updatePlaybackSpeed(rounded);
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    _buildSpeedMarkers(context),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildSpeedMarkers(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final markerStyle = theme.textTheme.labelSmall?.copyWith(
+          color: scheme.onSurfaceVariant,
+          fontWeight: FontWeight.w700,
+        );
+        final markerValues = <double>[
+          _minPlaybackSpeed,
+          1.0,
+          1.5,
+          _maxPlaybackSpeed,
+        ];
+        const markerWidth = 32.0;
+        const trackHorizontalInset = 8.0;
+
+        return SizedBox(
+          height: 20,
+          child: Stack(
+            children: [
+              for (final marker in markerValues)
+                Positioned.fill(
+                  child: Align(
+                    alignment: Alignment(_markerAlignment(marker), 0),
+                    child: Transform.translate(
+                      offset: Offset(
+                        marker == _minPlaybackSpeed
+                            ? markerWidth / 2 - trackHorizontalInset
+                            : marker == _maxPlaybackSpeed
+                                ? -(markerWidth / 2 - trackHorizontalInset)
+                                : 0,
+                        0,
+                      ),
+                      child: SizedBox(
+                        width: markerWidth,
+                        child: Text(
+                          '${marker.toStringAsFixed(1)}x',
+                          textAlign: TextAlign.center,
+                          style: markerStyle,
+                        ),
+                      ),
+                    ),
                   ),
-              ],
-            ),
+                ),
+            ],
           ),
         );
       },
     );
   }
 
+  double _markerAlignment(double speed) {
+    final progress = (speed - _minPlaybackSpeed) /
+        (_maxPlaybackSpeed - _minPlaybackSpeed);
+    return progress.clamp(0.0, 1.0) * 2 - 1;
+  }
+
+  String _formatPlaybackSpeed(double speed) {
+    final normalized = (speed * 10).roundToDouble() / 10;
+    return '${normalized.toStringAsFixed(normalized % 1 == 0 ? 0 : 1)}x';
+  }
   Future<void> _showPlaylistSheet(
       BuildContext context, PlayerController controller) async {
     final theme = Theme.of(context);
