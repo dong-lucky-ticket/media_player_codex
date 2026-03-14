@@ -22,6 +22,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   int _lastNoticeToken = 0;
   late final ScrollController _scrollController;
   bool _showScrollToTopButton = false;
+  final Set<String> _collapsedGroupNames = <String>{};
   List<AudioTrack>? _lastTracksSource;
   List<_TrackGroup>? _lastTrackGroups;
   List<AudioTrack>? _lastAllTracksSource;
@@ -49,6 +50,14 @@ class _LibraryScreenState extends State<LibraryScreen> {
       duration: const Duration(milliseconds: 280),
       curve: Curves.easeOutCubic,
     );
+  }
+
+  void _toggleGroupExpanded(String groupName) {
+    setState(() {
+      if (!_collapsedGroupNames.add(groupName)) {
+        _collapsedGroupNames.remove(groupName);
+      }
+    });
   }
 
   @override
@@ -310,6 +319,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final folderTracks = allGroupsByName[group.name] ?? group.tracks;
+    final isCollapsed = _collapsedGroupNames.contains(group.name);
     final playIndexByPath = <String, int>{
       for (var i = 0; i < folderTracks.length; i++) folderTracks[i].path: i,
     };
@@ -344,25 +354,52 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          group.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w700,
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(14),
+                        onTap: () => _toggleGroupExpanded(group.name),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 4,
+                            vertical: 4,
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      group.name,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: theme.textTheme.titleSmall?.copyWith(
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      '${folderTracks.length} 个音频',
+                                      style: theme.textTheme.bodySmall?.copyWith(
+                                        color: scheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Icon(
+                                isCollapsed
+                                    ? Icons.keyboard_arrow_down_rounded
+                                    : Icons.keyboard_arrow_up_rounded,
+                                size: 20,
+                                color: scheme.onSurfaceVariant,
+                              ),
+                            ],
                           ),
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          '${folderTracks.length} 个音频',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: scheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
                   IconButton(
@@ -392,7 +429,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 ],
               ),
             ),
-            ...group.tracks.asMap().entries.map((entry) {
+            if (!isCollapsed) ...group.tracks.asMap().entries.map((entry) {
               final track = entry.value;
               final isLast = entry.key == group.tracks.length - 1;
               final serial = entry.key + 1;
