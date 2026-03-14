@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:audio_service/audio_service.dart';
 import 'package:just_audio/just_audio.dart';
@@ -11,9 +11,10 @@ class PlayerAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
 
   PlayerAudioHandler._(this._player) {
     _player.playbackEventStream.listen((_) => _broadcastState());
-    _player.currentIndexStream.listen(_updateCurrentMediaItem);
+    _player.currentIndexStream.listen(_handleCurrentIndexChanged);
     _player.durationStream.listen(_updateDurationForCurrent);
     _player.positionStream.listen((position) async {
+      _lastObservedPosition = position;
       try {
         await _handlePositionTick(position);
       } catch (_) {
@@ -23,11 +24,15 @@ class PlayerAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
   }
 
   final AudioPlayer _player;
+  final StreamController<String> _completedTrackController =
+      StreamController<String>.broadcast();
   int _skipStartSec = 5;
   int _skipEndSec = 3;
   RepeatModeType _repeatMode = RepeatModeType.listLoop;
   bool _isAutoAdvancing = false;
   bool _suppressImplicitSelection = false;
+  String? _lastCompletedTrackId;
+  Duration _lastObservedPosition = Duration.zero;
 
   static Future<PlayerAudioHandler> init() async {
     final handler = PlayerAudioHandler._(AudioPlayer());
@@ -43,6 +48,8 @@ class PlayerAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
     );
     return handler;
   }
+
+  Stream<String> get completedTrackStream => _completedTrackController.stream;
 
   Future<void> setTracks(List<AudioTrack> tracks, {bool preserveIndex = true}) async {
     final wasPlaying = _player.playing;
@@ -79,6 +86,7 @@ class PlayerAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
     queue.add(items);
 
     if (items.isEmpty) {
+      _lastCompletedTrackId = null;
       _suppressImplicitSelection = false;
       await _player.stop();
       mediaItem.add(null);
@@ -144,11 +152,6 @@ class PlayerAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
   @override
   Future<void> pause() => _player.pause();
 
-  @override
-  Future<void> stop() async {
-    await _player.stop();
-    await super.stop();
-  }
 
   @override
   Future<void> seek(Duration position) => _player.seek(position);
@@ -285,8 +288,21 @@ class PlayerAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
     }
   }
 
+  void _handleCurrentIndexChanged(int? index) {
+    final previousItem = mediaItem.value;
+    if (previousItem != null && _didReachCompletionPoint(previousItem, _lastObservedPosition)) {
+      _emitCompletedTrack(previousItem.id);
+    }
+    _updateCurrentMediaItem(index);
+  }
+
   void _updateCurrentMediaItem(int? index) {
     if (index == null || index < 0 || index >= queue.value.length) return;
+    final nextItem = queue.value[index];
+    if (mediaItem.value?.id != nextItem.id) {
+      _lastCompletedTrackId = null;
+      _lastObservedPosition = Duration.zero;
+    }
     if (_suppressImplicitSelection && !_player.playing) {
       _broadcastState();
       return;
@@ -321,6 +337,7 @@ class PlayerAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
 
     _isAutoAdvancing = true;
     try {
+      _emitCompletedCurrentTrack();
       if (_repeatMode == RepeatModeType.single) {
         await _player.seek(Duration(seconds: _skipStartSec));
         await _player.play();
@@ -381,6 +398,28 @@ class PlayerAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
     _broadcastState();
   }
 
+  bool _didReachCompletionPoint(MediaItem item, Duration position) {
+    final duration = item.duration ?? _player.duration;
+    if (duration == null || duration <= Duration.zero) return false;
+
+    if (_skipEndSec > 0) {
+      final threshold = duration - Duration(seconds: _skipEndSec);
+      if (threshold > Duration.zero) return position >= threshold;
+    }
+
+    return position >= duration * 0.98;
+  }
+
+  void _emitCompletedTrack(String? trackId) {
+    if (trackId == null || _lastCompletedTrackId == trackId) return;
+    _lastCompletedTrackId = trackId;
+    _completedTrackController.add(trackId);
+  }
+
+  void _emitCompletedCurrentTrack() {
+    _emitCompletedTrack(mediaItem.value?.id);
+  }
+
   void _publishCurrentSelectionFromPlayer() {
     final index = _player.currentIndex;
     if (index == null || index < 0 || index >= queue.value.length) return;
@@ -390,6 +429,20 @@ class PlayerAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
 
   Duration get position => _player.position;
   Stream<Duration> get positionStream => _player.positionStream;
+
+  @override
+  Future<void> stop() async {
+    _lastCompletedTrackId = null;
+    _lastObservedPosition = Duration.zero;
+    await _player.stop();
+    await super.stop();
+  }
+
 }
+
+
+
+
+
 
 

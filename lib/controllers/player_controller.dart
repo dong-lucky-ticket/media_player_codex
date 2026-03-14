@@ -44,7 +44,9 @@ class PlayerController extends ChangeNotifier {
   String? _scanStatusText;
   int _scanTaskId = 0;
   final Set<String> _unplayablePaths = <String>{};
+  final Set<String> _playedPlaylistPaths = <String>{};
   int _unplayableVersion = 0;
+  int _playedPlaylistVersion = 0;
   PlayerSettings _settings = const PlayerSettings();
   MediaItem? _currentMediaItem;
   PlaybackState _playbackState = PlaybackState();
@@ -84,8 +86,11 @@ class PlayerController extends ChangeNotifier {
   PermissionGuideState get permissionState => _permissionState;
   UiNotice? get notice => _notice;
   int get unplayableVersion => _unplayableVersion;
+  int get playedPlaylistVersion => _playedPlaylistVersion;
 
   bool isTrackUnplayable(String path) => _unplayablePaths.contains(path);
+  bool isTrackPlayedInActivePlaylist(String path) =>
+      _playedPlaylistPaths.contains(path);
 
   int? get currentIndex {
     final currentId = _currentMediaItem?.id;
@@ -132,6 +137,12 @@ class PlayerController extends ChangeNotifier {
       ..add(_audioHandler.positionStream.listen((position) {
         _position = position;
         notifyListeners();
+      }))
+      ..add(_audioHandler.completedTrackStream.listen((path) {
+        if (_playedPlaylistPaths.add(path)) {
+          _playedPlaylistVersion += 1;
+          notifyListeners();
+        }
       }));
 
     notifyListeners();
@@ -289,6 +300,7 @@ class PlayerController extends ChangeNotifier {
     final shouldResetQueue = !_isSamePlaylist(_activePlaylist, playlist);
     if (shouldResetQueue) {
       _activePlaylist = playlist;
+      _resetPlayedPlaylistPaths();
       await _audioHandler.setTracks(_activePlaylist, preserveIndex: false);
     }
 
@@ -339,13 +351,16 @@ class PlayerController extends ChangeNotifier {
   Future<void> removeTrackFromActivePlaylist(int index) async {
     if (index < 0 || index >= _activePlaylist.length) return;
 
+    final removedTrack = _activePlaylist[index];
     final updatedPlaylist = List<AudioTrack>.from(_activePlaylist)..removeAt(index);
     _activePlaylist = List<AudioTrack>.unmodifiable(updatedPlaylist);
+    _clearPlayedPlaylistPath(removedTrack.path);
     await _audioHandler.setTracks(_activePlaylist);
     notifyListeners();
   }
   Future<void> clearActivePlaylist() async {
     _activePlaylist = const [];
+    _resetPlayedPlaylistPaths();
     await _audioHandler.setTracks(_activePlaylist, preserveIndex: false);
     notifyListeners();
   }
@@ -407,12 +422,26 @@ class PlayerController extends ChangeNotifier {
           .map((track) => trackMap[track.path])
           .whereType<AudioTrack>()
           .toList(growable: false);
+      _playedPlaylistPaths.removeWhere(
+        (path) => !_activePlaylist.any((track) => track.path == path),
+      );
     }
 
     await _audioHandler.setTracks(_activePlaylist);
     notifyListeners();
   }
 
+  void _resetPlayedPlaylistPaths() {
+    if (_playedPlaylistPaths.isEmpty) return;
+    _playedPlaylistPaths.clear();
+    _playedPlaylistVersion += 1;
+  }
+
+  void _clearPlayedPlaylistPath(String path) {
+    if (_playedPlaylistPaths.remove(path)) {
+      _playedPlaylistVersion += 1;
+    }
+  }
   Future<void> _runBusyTask(Future<void> Function() task) async {
     if (_isBusy || _scanInProgress) return;
     _isBusy = true;
@@ -451,4 +480,7 @@ class PlayerController extends ChangeNotifier {
     super.dispose();
   }
 }
+
+
+
 

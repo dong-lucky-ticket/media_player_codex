@@ -672,6 +672,8 @@ class PlayerScreen extends StatelessWidget {
             final tracks = context.select((PlayerController c) => c.activePlaylist);
             final currentMediaId =
                 context.select((PlayerController c) => c.currentMediaItem?.id);
+            final _ =
+                context.select((PlayerController c) => c.playedPlaylistVersion);
             final currentPlaylistIndex = currentMediaId == null
                 ? null
                 : tracks.indexWhere((track) => track.path == currentMediaId);
@@ -754,29 +756,16 @@ class PlayerScreen extends StatelessWidget {
                                 final isCurrent =
                                     index == normalizedCurrentPlaylistIndex;
                                 final isPlayed =
-                                    normalizedCurrentPlaylistIndex != null &&
-                                    index < normalizedCurrentPlaylistIndex;
+                                    controller.isTrackPlayedInActivePlaylist(track.path);
                                 final itemKey = isCurrent ? currentItemKey : null;
                                 final tileColor = isCurrent
                                     ? scheme.primaryContainer.withOpacity(0.5)
-                                    : isPlayed
-                                        ? scheme.surfaceVariant.withOpacity(0.08)
-                                        : scheme.surfaceVariant.withOpacity(0.14);
-                                final titleColor = isCurrent
-                                    ? scheme.onSurface
-                                    : isPlayed
-                                        ? scheme.onSurfaceVariant.withOpacity(0.72)
-                                        : null;
+                                    : scheme.surfaceVariant.withOpacity(0.14);
                                 final indexColor = isCurrent
                                     ? scheme.primary
-                                    : isPlayed
-                                        ? scheme.surface.withOpacity(0.72)
-                                        : scheme.surface;
-                                final indexTextColor = isCurrent
-                                    ? scheme.onPrimary
-                                    : isPlayed
-                                        ? scheme.onSurfaceVariant.withOpacity(0.74)
-                                        : scheme.onSurface;
+                                    : scheme.surface;
+                                final contentOpacity =
+                                    isCurrent ? 1.0 : isPlayed ? 0.46 : 1.0;
 
                                 return Material(
                                   key: itemKey,
@@ -790,93 +779,92 @@ class PlayerScreen extends StatelessWidget {
                                       navigator.pop();
                                     },
                                     child: Padding(
-                                      padding:
-                                          const EdgeInsets.fromLTRB(12, 10, 8, 10),
-                                      child: Row(
-                                        children: [
-                                          Container(
-                                            width: 30,
-                                            height: 30,
-                                            alignment: Alignment.center,
-                                            decoration: BoxDecoration(
-                                              color: indexColor,
-                                              borderRadius: BorderRadius.circular(10),
-                                              border: Border.all(
-                                                color: isCurrent
-                                                    ? scheme.primary.withOpacity(0.15)
-                                                    : isPlayed
-                                                        ? scheme.outlineVariant
-                                                            .withOpacity(0.18)
-                                                        : scheme.outlineVariant
-                                                            .withOpacity(0.35),
+                                      padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+                                      child: Opacity(
+                                        opacity: contentOpacity,
+                                        child: Row(
+                                          children: [
+                                            Container(
+                                              width: 30,
+                                              height: 30,
+                                              alignment: Alignment.center,
+                                              decoration: BoxDecoration(
+                                                color: indexColor,
+                                                borderRadius: BorderRadius.circular(10),
+                                                border: Border.all(
+                                                  color: isCurrent
+                                                      ? scheme.primary.withOpacity(0.15)
+                                                      : scheme.outlineVariant
+                                                          .withOpacity(0.35),
+                                                ),
+                                              ),
+                                              child: Text(
+                                                '${index + 1}',
+                                                style: theme.textTheme.labelSmall?.copyWith(
+                                                  fontWeight: FontWeight.w800,
+                                                  color: isCurrent
+                                                      ? scheme.onPrimary
+                                                      : scheme.onSurface,
+                                                ),
                                               ),
                                             ),
-                                            child: Text(
-                                              '${index + 1}',
-                                              style:
-                                                  theme.textTheme.labelSmall?.copyWith(
-                                                fontWeight: FontWeight.w800,
-                                                color: indexTextColor,
+                                            const SizedBox(width: 10),
+                                            Expanded(
+                                              child: Text(
+                                                track.title,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: theme.textTheme.titleSmall?.copyWith(
+                                                  fontWeight: FontWeight.w700,
+                                                  color: isCurrent
+                                                      ? scheme.onSurface
+                                                      : null,
+                                                ),
                                               ),
                                             ),
-                                          ),
-                                          const SizedBox(width: 10),
-                                          Expanded(
-                                            child: Text(
-                                              track.title,
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: theme.textTheme.titleSmall?.copyWith(
+                                            const SizedBox(width: 10),
+                                            Text(
+                                              formatDuration(
+                                                track.durationMs > 0
+                                                    ? Duration(
+                                                        milliseconds: track.durationMs,
+                                                      )
+                                                    : null,
+                                              ),
+                                              style: theme.textTheme.labelSmall?.copyWith(
+                                                color: scheme.onSurfaceVariant,
                                                 fontWeight: FontWeight.w700,
-                                                color: titleColor,
                                               ),
                                             ),
-                                          ),
-                                          const SizedBox(width: 10),
-                                          Text(
-                                            formatDuration(
-                                              track.durationMs > 0
-                                                  ? Duration(
-                                                      milliseconds: track.durationMs,
-                                                    )
-                                                  : null,
+                                            const SizedBox(width: 4),
+                                            IconButton(
+                                              tooltip: '移除此项',
+                                              visualDensity: VisualDensity.compact,
+                                              onPressed: () async {
+                                                final removedTrack = track;
+                                                await controller
+                                                    .removeTrackFromActivePlaylist(index);
+                                                if (!sheetContext.mounted) return;
+                                                showAppSnackBar(
+                                                  sheetContext,
+                                                  message:
+                                                      '已从播放列表移除 ${removedTrack.title}',
+                                                  isError: false,
+                                                );
+                                              },
+                                              icon: Icon(
+                                                Icons.remove_circle_outline_rounded,
+                                                size: 20,
+                                                color: scheme.error.withOpacity(0.88),
+                                              ),
                                             ),
-                                            style:
-                                                theme.textTheme.labelSmall?.copyWith(
-                                              color: isPlayed
-                                                  ? scheme.onSurfaceVariant
-                                                      .withOpacity(0.68)
-                                                  : scheme.onSurfaceVariant,
-                                              fontWeight: FontWeight.w700,
-                                            ),
-                                          ),
-                                          const SizedBox(width: 4),
-                                          IconButton(
-                                            tooltip: '移除此项',
-                                            visualDensity: VisualDensity.compact,
-                                            onPressed: () async {
-                                              final removedTrack = track;
-                                              await controller
-                                                  .removeTrackFromActivePlaylist(index);
-                                              if (!sheetContext.mounted) return;
-                                              showAppSnackBar(
-                                                sheetContext,
-                                                message:
-                                                    '已从播放列表移除 ${removedTrack.title}',
-                                                isError: false,
-                                              );
-                                            },
-                                            icon: Icon(
-                                              Icons.remove_circle_outline_rounded,
-                                              size: 20,
-                                              color: scheme.error.withOpacity(0.88),
-                                            ),
-                                          ),
-                                        ],
+                                          ],
+                                        ),
                                       ),
                                     ),
                                   ),
-                                );                              },
+                                );
+                              },
                             ),
                     ),
                   ],
@@ -1001,6 +989,15 @@ class PlayerScreen extends StatelessWidget {
     );
   }
 }
+
+
+
+
+
+
+
+
+
 
 
 
