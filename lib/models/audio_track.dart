@@ -1,4 +1,4 @@
-﻿class AudioTrack {
+class AudioTrack {
   const AudioTrack({
     required this.path,
     required this.title,
