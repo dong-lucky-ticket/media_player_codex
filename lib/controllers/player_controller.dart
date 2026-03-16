@@ -313,16 +313,30 @@ class PlayerController extends ChangeNotifier {
   ) async {
     if (folderTracks.isEmpty) return;
 
+    final existingPaths = _activePlaylist
+        .map((track) => track.path)
+        .toSet();
+    final appendedTracks = folderTracks.where((track) {
+      return existingPaths.add(track.path);
+    }).toList(growable: false);
+    if (appendedTracks.isEmpty) {
+      _pushNotice(
+        '$folderName 中的音频已全部存在于播放列表中。',
+        isError: false,
+      );
+      return;
+    }
+
     _activePlaylist = List<AudioTrack>.unmodifiable([
       ..._activePlaylist,
-      ...folderTracks,
+      ...appendedTracks,
     ]);
     await _audioHandler.setTracks(
       _activePlaylist,
       selectFirstWhenIdle: true,
     );
     _pushNotice(
-      '已将 ${folderTracks.length} 首音频追加到 $folderName 播放列表末尾。',
+      '已将 ${appendedTracks.length} 首音频追加到 $folderName 播放列表末尾。',
       isError: false,
     );
   }
@@ -483,6 +497,9 @@ class PlayerController extends ChangeNotifier {
     super.dispose();
   }
 }
+
+
+
 
 
 
