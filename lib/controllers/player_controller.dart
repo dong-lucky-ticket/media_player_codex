@@ -58,6 +58,12 @@ class PlayerController extends ChangeNotifier {
   );
   UiNotice? _notice;
   int _noticeToken = 0;
+  String? _pendingRestoreTrackPath;
+  int _pendingRestorePositionMs = 0;
+  Timer? _playbackStateSaveTimer;
+  DateTime? _lastPlaybackStateSavedAt;
+
+  static const _playbackStateSaveInterval = Duration(seconds: 2);
 
   List<AudioTrack> get tracks {
     if (_searchText.trim().isEmpty) return _tracks;
@@ -123,28 +129,42 @@ class PlayerController extends ChangeNotifier {
     }
 
     await _audioHandler.applySettings(_settings);
-    await _audioHandler.setTracks(_activePlaylist, preserveIndex: false);
 
     _subscriptions
       ..add(_audioHandler.mediaItem.listen((item) {
         _currentMediaItem = item;
+        _schedulePlaybackStateSave();
         notifyListeners();
       }))
       ..add(_audioHandler.playbackState.listen((state) {
         _playbackState = state;
+        _schedulePlaybackStateSave();
         notifyListeners();
       }))
       ..add(_audioHandler.positionStream.listen((position) {
         _position = position;
+        _schedulePlaybackStateSave();
         notifyListeners();
       }))
       ..add(_audioHandler.completedTrackStream.listen((path) {
         if (_playedPlaylistPaths.add(path)) {
           _playedPlaylistVersion += 1;
-          notifyListeners();
+          unawaited(_savePlaybackState(force: true));
         }
+        notifyListeners();
       }));
 
+    try {
+      await _restoreStoredPlaybackState().timeout(const Duration(seconds: 3));
+    } catch (_) {
+      _activePlaylist = const [];
+      _pendingRestoreTrackPath = null;
+      _pendingRestorePositionMs = 0;
+      await _repository.clearStoredPlaybackState();
+      await _audioHandler.setTracks(_activePlaylist, preserveIndex: false);
+      _pushNotice('启动时恢复播放列表失败，已跳过缓存恢复。',
+          isError: true);
+    }
     notifyListeners();
   }
 
@@ -212,7 +232,7 @@ class PlayerController extends ChangeNotifier {
         minDurationMs: _settings.minScanDurationSec * 1000,
         onProgress: (progress) {
           _scanStatusText =
-              '已扫描 ${progress.processedCount} 项，发现 ${progress.foundCount} 个音频';
+              'Scanned ${progress.processedCount} items, found ${progress.foundCount} audio files.';
           notifyListeners();
         },
       );
@@ -266,7 +286,9 @@ class PlayerController extends ChangeNotifier {
   Future<void> openSystemSettings() async {
     final opened = await _importService.openPermissionSettings();
     _pushNotice(
-      opened ? '已打开系统设置，请授权后返回应用并刷新状态。' : '无法打开系统设置，请手动前往设置授权。',
+      opened
+          ? '已打开系统设置，请授权后返回应用并刷新状态。'
+          : '无法打开系统设置，请手动前往设置授权。',
       isError: !opened,
     );
   }
@@ -300,8 +322,11 @@ class PlayerController extends ChangeNotifier {
     final shouldResetQueue = !_isSamePlaylist(_activePlaylist, playlist);
     if (shouldResetQueue) {
       _activePlaylist = playlist;
+      _pendingRestoreTrackPath = null;
+      _pendingRestorePositionMs = 0;
       _resetPlayedPlaylistPaths();
       await _audioHandler.setTracks(_activePlaylist, preserveIndex: false);
+      await _savePlaybackState(force: true);
     }
 
     await playTrackAt(index);
@@ -313,9 +338,7 @@ class PlayerController extends ChangeNotifier {
   ) async {
     if (folderTracks.isEmpty) return;
 
-    final existingPaths = _activePlaylist
-        .map((track) => track.path)
-        .toSet();
+    final existingPaths = _activePlaylist.map((track) => track.path).toSet();
     final appendedTracks = folderTracks.where((track) {
       return existingPaths.add(track.path);
     }).toList(growable: false);
@@ -331,10 +354,13 @@ class PlayerController extends ChangeNotifier {
       ..._activePlaylist,
       ...appendedTracks,
     ]);
+    _pendingRestoreTrackPath = null;
+    _pendingRestorePositionMs = 0;
     await _audioHandler.setTracks(
       _activePlaylist,
       selectFirstWhenIdle: true,
     );
+    await _savePlaybackState(force: true);
     _pushNotice(
       '已将 ${appendedTracks.length} 首音频追加到 $folderName 播放列表末尾。',
       isError: false,
@@ -346,10 +372,13 @@ class PlayerController extends ChangeNotifier {
 
     final track = _activePlaylist[index];
     if (_unplayablePaths.contains(track.path)) {
-      _pushNotice('该音频此前播放失败，请长按查看详情或移除该文件。', isError: true);
+      _pushNotice('该音频此前播放失败，请长按查看详情或移除该文件。',
+          isError: true);
       return;
     }
 
+    _pendingRestoreTrackPath = null;
+    _pendingRestorePositionMs = 0;
     final ok = await _audioHandler.playFromIndex(index);
     if (ok) {
       if (_unplayablePaths.remove(track.path)) {
@@ -362,23 +391,33 @@ class PlayerController extends ChangeNotifier {
     if (_unplayablePaths.add(track.path)) {
       _unplayableVersion += 1;
     }
-    _pushNotice('该音频无法正常播放，可能文件已损坏或格式不受支持。', isError: true);
+    _pushNotice(
+        '该音频无法正常播放，可能文件已损坏或格式不受支持。',
+        isError: true);
   }
 
   Future<void> removeTrackFromActivePlaylist(int index) async {
     if (index < 0 || index >= _activePlaylist.length) return;
 
     final removedTrack = _activePlaylist[index];
-    final updatedPlaylist = List<AudioTrack>.from(_activePlaylist)..removeAt(index);
+    final updatedPlaylist = List<AudioTrack>.from(_activePlaylist)
+      ..removeAt(index);
     _activePlaylist = List<AudioTrack>.unmodifiable(updatedPlaylist);
+    _pendingRestoreTrackPath = null;
+    _pendingRestorePositionMs = 0;
     _clearPlayedPlaylistPath(removedTrack.path);
     await _audioHandler.setTracks(_activePlaylist);
+    await _savePlaybackState(force: true);
     notifyListeners();
   }
+
   Future<void> clearActivePlaylist() async {
     _activePlaylist = const [];
+    _pendingRestoreTrackPath = null;
+    _pendingRestorePositionMs = 0;
     _resetPlayedPlaylistPaths();
     await _audioHandler.setTracks(_activePlaylist, preserveIndex: false);
+    await _repository.clearStoredPlaybackState();
     notifyListeners();
   }
 
@@ -388,9 +427,15 @@ class PlayerController extends ChangeNotifier {
     } else {
       await _audioHandler.play();
     }
+    await _savePlaybackState(force: true);
   }
 
-  Future<void> seekTo(Duration position) => _audioHandler.seek(position);
+  Future<void> seekTo(Duration position) async {
+    await _audioHandler.seek(position);
+    _position = position;
+    notifyListeners();
+    await _savePlaybackState(force: true);
+  }
 
   Future<void> playNext() => _audioHandler.skipToNext();
 
@@ -445,6 +490,7 @@ class PlayerController extends ChangeNotifier {
     }
 
     await _audioHandler.setTracks(_activePlaylist);
+    await _savePlaybackState(force: true);
     notifyListeners();
   }
 
@@ -459,6 +505,115 @@ class PlayerController extends ChangeNotifier {
       _playedPlaylistVersion += 1;
     }
   }
+
+  Future<void> _restoreStoredPlaybackState() async {
+    final storedState = await _repository.getStoredPlaybackState();
+    if (storedState == null || storedState.playlistPaths.isEmpty) {
+      await _audioHandler.setTracks(_activePlaylist, preserveIndex: false);
+      return;
+    }
+
+    final trackMap = {for (final track in _tracks) track.path: track};
+    final playlist = storedState.playlistPaths
+        .map((path) => trackMap[path])
+        .whereType<AudioTrack>()
+        .toList(growable: false);
+    if (playlist.isEmpty) {
+      await _repository.clearStoredPlaybackState();
+      await _audioHandler.setTracks(_activePlaylist, preserveIndex: false);
+      return;
+    }
+
+    _activePlaylist = List<AudioTrack>.unmodifiable(playlist);
+    _playedPlaylistPaths
+      ..clear()
+      ..addAll(
+        storedState.playedTrackPaths.where(
+          (path) => _activePlaylist.any((track) => track.path == path),
+        ),
+      );
+    _playedPlaylistVersion += 1;
+    _pendingRestoreTrackPath = storedState.currentTrackPath;
+    _pendingRestorePositionMs = storedState.positionMs;
+    await _audioHandler.setTracks(_activePlaylist, preserveIndex: false);
+  }
+
+  Future<void> restorePendingPlaybackForPlayerScreen() async {
+    final targetTrackPath = _pendingRestoreTrackPath;
+    if (targetTrackPath == null || _activePlaylist.isEmpty) return;
+    if (!_activePlaylist.any((track) => track.path == targetTrackPath)) {
+      _pendingRestoreTrackPath = null;
+      _pendingRestorePositionMs = 0;
+      return;
+    }
+
+    await _audioHandler.setTracks(
+      _activePlaylist,
+      preserveIndex: false,
+      restoredTrackId: targetTrackPath,
+      restoredPlaying: false,
+    );
+    if (_pendingRestorePositionMs > 0) {
+      await _audioHandler
+          .seek(Duration(milliseconds: _pendingRestorePositionMs));
+    }
+    _pendingRestoreTrackPath = null;
+    _pendingRestorePositionMs = 0;
+    notifyListeners();
+  }
+
+  void _schedulePlaybackStateSave() {
+    if (_activePlaylist.isEmpty) return;
+    final lastSavedAt = _lastPlaybackStateSavedAt;
+    if (lastSavedAt == null ||
+        DateTime.now().difference(lastSavedAt) >= _playbackStateSaveInterval) {
+      unawaited(_savePlaybackState());
+      return;
+    }
+
+    if (_playbackStateSaveTimer?.isActive ?? false) return;
+    final delay =
+        _playbackStateSaveInterval - DateTime.now().difference(lastSavedAt);
+    _playbackStateSaveTimer = Timer(delay, () {
+      _playbackStateSaveTimer = null;
+      unawaited(_savePlaybackState());
+    });
+  }
+
+  Future<void> _savePlaybackState({bool force = false}) async {
+    _playbackStateSaveTimer?.cancel();
+    _playbackStateSaveTimer = null;
+    if (_activePlaylist.isEmpty) {
+      await _repository.clearStoredPlaybackState();
+      return;
+    }
+
+    final lastSavedAt = _lastPlaybackStateSavedAt;
+    if (!force &&
+        lastSavedAt != null &&
+        DateTime.now().difference(lastSavedAt) < _playbackStateSaveInterval) {
+      return;
+    }
+
+    final resolvedTrackPath = _currentMediaItem?.id ?? _pendingRestoreTrackPath;
+    final resolvedPositionMs = _currentMediaItem?.id == null &&
+            _pendingRestoreTrackPath != null
+        ? _pendingRestorePositionMs
+        : (_position.inMilliseconds < 0 ? 0 : _position.inMilliseconds);
+
+    await _repository.saveStoredPlaybackState(
+      StoredPlaybackState(
+        playlistPaths:
+            _activePlaylist.map((track) => track.path).toList(growable: false),
+        currentTrackPath: resolvedTrackPath,
+        positionMs: resolvedPositionMs,
+        isPlaying: _playbackState.playing,
+        playedTrackPaths: _playedPlaylistPaths.toList(growable: false),
+      ),
+    );
+    _lastPlaybackStateSavedAt = DateTime.now();
+  }
+
   Future<void> _runBusyTask(Future<void> Function() task) async {
     if (_isBusy || _scanInProgress) return;
     _isBusy = true;
@@ -497,10 +652,3 @@ class PlayerController extends ChangeNotifier {
     super.dispose();
   }
 }
-
-
-
-
-
-
-

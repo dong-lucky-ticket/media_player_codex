@@ -1,4 +1,6 @@
-﻿import 'package:flutter/material.dart';
+import 'dart:async';
+
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../controllers/player_controller.dart';
@@ -37,12 +39,22 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  void _selectTab(int index, PlayerController controller) {
+    if (index == 1) {
+      unawaited(controller.restorePendingPlaybackForPlayerScreen());
+    }
+    setState(() {
+      _currentTab = index;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final controller = context.watch<PlayerController>();
     final currentItemId = controller.currentMediaItem?.id;
 
-    if (_dismissedMiniPlayerId != null && _dismissedMiniPlayerId != currentItemId) {
+    if (_dismissedMiniPlayerId != null &&
+        _dismissedMiniPlayerId != currentItemId) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         setState(() {
@@ -55,8 +67,10 @@ class _HomeScreenState extends State<HomeScreen> {
         controller.playbackState.playing &&
         _currentTab != 1 &&
         currentItemId != _dismissedMiniPlayerId;
-    final bottomOverlayHeight = showMiniPlayer ? kMiniPlayerBarReservedHeight : 0.0;
-    final snackBarOverlayHeight = kHomeNavigationBarHeight + bottomOverlayHeight;
+    final bottomOverlayHeight =
+        showMiniPlayer ? kMiniPlayerBarReservedHeight : 0.0;
+    final snackBarOverlayHeight =
+        kHomeNavigationBarHeight + bottomOverlayHeight;
     if (_bottomOverlayHeightNotifier.value != snackBarOverlayHeight) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -109,14 +123,12 @@ class _HomeScreenState extends State<HomeScreen> {
             selectedIndex: _currentTab,
             labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
             animationDuration: const Duration(milliseconds: 280),
-            onDestinationSelected: (index) {
-              setState(() {
-                _currentTab = index;
-              });
-            },
+            onDestinationSelected: (index) => _selectTab(index, controller),
             destinations: const [
-              NavigationDestination(icon: Icon(Icons.library_music), label: '音频列表'),
-              NavigationDestination(icon: Icon(Icons.play_circle_outline), label: '播放'),
+              NavigationDestination(
+                  icon: Icon(Icons.library_music), label: '音频列表'),
+              NavigationDestination(
+                  icon: Icon(Icons.play_circle_outline), label: '播放'),
               NavigationDestination(icon: Icon(Icons.settings), label: '设置'),
             ],
           ),
@@ -124,11 +136,7 @@ class _HomeScreenState extends State<HomeScreen> {
         bottomSheet: !showMiniPlayer
             ? null
             : MiniPlayerBar(
-                onOpenPlayer: () {
-                  setState(() {
-                    _currentTab = 1;
-                  });
-                },
+                onOpenPlayer: () => _selectTab(1, controller),
                 onClose: () {
                   setState(() {
                     _dismissedMiniPlayerId = currentItemId;
@@ -145,6 +153,3 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 }
-
-
-

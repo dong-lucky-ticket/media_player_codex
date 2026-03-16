@@ -1,4 +1,6 @@
-﻿import 'package:flutter/material.dart';
+import 'dart:async';
+
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'controllers/player_controller.dart';
@@ -21,9 +23,9 @@ Future<void> main() async {
     audioHandler: audioHandler,
     importService: importService,
   );
-  await controller.init();
 
   runApp(PlayerApp(controller: controller));
+  unawaited(controller.init());
 }
 
 class PlayerApp extends StatelessWidget {
@@ -47,6 +49,3 @@ class PlayerApp extends StatelessWidget {
     );
   }
 }
-
-
-

@@ -56,6 +56,9 @@ class PlayerAudioHandler extends BaseAudioHandler
     List<AudioTrack> tracks, {
     bool preserveIndex = true,
     bool selectFirstWhenIdle = false,
+    String? restoredTrackId,
+    Duration? restoredPosition,
+    bool? restoredPlaying,
   }) async {
     final wasPlaying = _player.playing;
     final previousPosition = _player.position;
@@ -76,23 +79,27 @@ class PlayerAudioHandler extends BaseAudioHandler
         )
         .toList(growable: false);
 
-    final existingCurrentId = preserveIndex ? mediaItem.value?.id : null;
-    final locatedIndex = existingCurrentId == null
+    final targetTrackId =
+        restoredTrackId ?? (preserveIndex ? mediaItem.value?.id : null);
+    final locatedIndex = targetTrackId == null
         ? -1
-        : items.indexWhere((item) => item.id == existingCurrentId);
+        : items.indexWhere((item) => item.id == targetTrackId);
     final hasRestorableSelection = locatedIndex >= 0;
     final initialIndex = items.isEmpty
         ? 0
         : (hasRestorableSelection
             ? locatedIndex.clamp(0, items.length - 1)
             : 0);
-    final shouldRestorePosition = hasRestorableSelection && preserveIndex;
-    final initialPosition = shouldRestorePosition
+    final shouldRestorePreviousPosition =
+        restoredTrackId == null && hasRestorableSelection && preserveIndex;
+    final initialPosition = shouldRestorePreviousPosition
         ? previousPosition
-        : Duration(seconds: _skipStartSec);
+        : restoredPosition ?? Duration(seconds: _skipStartSec);
+    final shouldResumePlayback = restoredPlaying ?? wasPlaying;
 
-    _suppressImplicitSelection =
-        !wasPlaying && !hasRestorableSelection && !selectFirstWhenIdle;
+    _suppressImplicitSelection = !shouldResumePlayback &&
+        !hasRestorableSelection &&
+        !selectFirstWhenIdle;
     queue.add(items);
 
     if (items.isEmpty) {
@@ -127,7 +134,7 @@ class PlayerAudioHandler extends BaseAudioHandler
       _publishCurrentSelectionFromPlayer();
     }
 
-    if (wasPlaying) {
+    if (shouldResumePlayback) {
       await play();
     }
   }

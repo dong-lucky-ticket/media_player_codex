@@ -1,12 +1,35 @@
+import 'dart:convert';
+
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
 import '../core/track_sorter.dart';
 import '../models/audio_track.dart';
 
+class StoredPlaybackState {
+  const StoredPlaybackState({
+    required this.playlistPaths,
+    required this.currentTrackPath,
+    required this.positionMs,
+    required this.isPlaying,
+    required this.playedTrackPaths,
+  });
+
+  final List<String> playlistPaths;
+  final String? currentTrackPath;
+  final int positionMs;
+  final bool isPlaying;
+  final List<String> playedTrackPaths;
+}
+
 class LibraryRepository {
   static const _settingsTable = 'settings';
   static const _tracksTable = 'tracks';
+  static const _playlistPathsKey = 'active_playlist_paths_json';
+  static const _currentTrackPathKey = 'active_playlist_current_path';
+  static const _positionMsKey = 'active_playlist_position_ms';
+  static const _isPlayingKey = 'active_playlist_is_playing';
+  static const _playedTrackPathsKey = 'active_playlist_played_paths_json';
   Database? _db;
 
   Future<void> init() async {
@@ -123,6 +146,63 @@ class LibraryRepository {
     put('min_scan_duration_sec', settings.minScanDurationSec.toString());
     put('repeat_mode', settings.repeatMode.name);
     await batch.commit(noResult: true);
+  }
+
+  Future<StoredPlaybackState?> getStoredPlaybackState() async {
+    final rows = await _database.query(_settingsTable);
+    final values = <String, String>{};
+    for (final row in rows) {
+      values[row['key'] as String] = row['value'] as String;
+    }
+
+    final rawPlaylist = values[_playlistPathsKey];
+    if (rawPlaylist == null || rawPlaylist.isEmpty) return null;
+
+    return StoredPlaybackState(
+      playlistPaths: (jsonDecode(rawPlaylist) as List<dynamic>)
+          .map((item) => item as String)
+          .toList(growable: false),
+      currentTrackPath: values[_currentTrackPathKey],
+      positionMs: int.tryParse(values[_positionMsKey] ?? '') ?? 0,
+      isPlaying: (values[_isPlayingKey] ?? '0') == '1',
+      playedTrackPaths:
+          ((jsonDecode(values[_playedTrackPathsKey] ?? '[]')) as List<dynamic>)
+              .map((item) => item as String)
+              .toList(growable: false),
+    );
+  }
+
+  Future<void> saveStoredPlaybackState(StoredPlaybackState state) async {
+    final batch = _database.batch();
+
+    void put(String key, String value) {
+      batch.insert(
+        _settingsTable,
+        {'key': key, 'value': value},
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+
+    put(_playlistPathsKey, jsonEncode(state.playlistPaths));
+    put(_currentTrackPathKey, state.currentTrackPath ?? '');
+    put(_positionMsKey, state.positionMs.toString());
+    put(_isPlayingKey, state.isPlaying ? '1' : '0');
+    put(_playedTrackPathsKey, jsonEncode(state.playedTrackPaths));
+    await batch.commit(noResult: true);
+  }
+
+  Future<void> clearStoredPlaybackState() async {
+    await _database.delete(
+      _settingsTable,
+      where: 'key IN (?, ?, ?, ?, ?)',
+      whereArgs: [
+        _playlistPathsKey,
+        _currentTrackPathKey,
+        _positionMsKey,
+        _isPlayingKey,
+        _playedTrackPathsKey,
+      ],
+    );
   }
 
   RepeatModeType _parseRepeatMode(String? raw) {
