@@ -31,6 +31,7 @@ class PlayerAudioHandler extends BaseAudioHandler
   int _skipEndSec = 3;
   RepeatModeType _repeatMode = RepeatModeType.listLoop;
   bool _isAutoAdvancing = false;
+  bool _isApplyingStartSkip = false;
   bool _suppressImplicitSelection = false;
   String? _lastCompletedTrackId;
   Duration _lastObservedPosition = Duration.zero;
@@ -309,6 +310,7 @@ class PlayerAudioHandler extends BaseAudioHandler
       _emitCompletedTrack(previousItem.id);
     }
     _updateCurrentMediaItem(index);
+    unawaited(_ensureSkipStartForImplicitAdvance(index));
   }
 
   void _updateCurrentMediaItem(int? index) {
@@ -363,6 +365,29 @@ class PlayerAudioHandler extends BaseAudioHandler
       }
     } finally {
       _isAutoAdvancing = false;
+    }
+  }
+
+  Future<void> _ensureSkipStartForImplicitAdvance(int? index) async {
+    if (_isApplyingStartSkip || _skipStartSec <= 0) return;
+    if (!_player.playing) return;
+    if (index == null || index < 0 || index >= queue.value.length) return;
+
+    final currentPosition = _player.position;
+    if (currentPosition >= Duration(seconds: _skipStartSec)) return;
+
+    final currentDuration = mediaItem.value?.duration ?? _player.duration;
+    if (currentDuration != null && currentDuration <= currentPosition) return;
+
+    _isApplyingStartSkip = true;
+    try {
+      await _player.seek(Duration(seconds: _skipStartSec), index: index);
+      _lastObservedPosition = _player.position;
+      _publishCurrentSelectionFromPlayer();
+    } catch (_) {
+      // Ignore best-effort skip failures during implicit transitions.
+    } finally {
+      _isApplyingStartSkip = false;
     }
   }
 
