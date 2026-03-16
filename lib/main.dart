@@ -12,6 +12,10 @@ import 'ui/screens/home_screen.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // The repository and audio handler must be ready before the widget tree starts,
+  // 必须先完成仓库和音频处理器初始化，再启动组件树，
+  // otherwise the first frame may render against incomplete persisted state.
+  // 否则首帧可能会基于不完整的持久化状态渲染。
   final repository = LibraryRepository();
   await repository.init();
 
@@ -25,6 +29,8 @@ Future<void> main() async {
   );
 
   runApp(PlayerApp(controller: controller));
+  // App startup should not be blocked by state restoration and stream wiring.
+  // 应用启动不应被状态恢复和流订阅绑定阻塞。
   unawaited(controller.init());
 }
 

@@ -150,6 +150,10 @@ class AudioImportService {
         );
       }
 
+      // Manual folder import cannot reliably probe every file duration cheaply,
+      // 手动导入时无法以低成本可靠探测每个文件的时长，
+      // so it reuses durations indexed by the system media library when present.
+      // 因此优先复用系统媒体库里已经建立好的时长索引。
       final knownDurations = await _loadKnownDurations();
       var processedCount = 0;
       final tracks = <AudioTrack>[];
@@ -236,6 +240,10 @@ class AudioImportService {
         );
       }
 
+      // Manual folder import cannot reliably probe every file duration cheaply,
+      // 手动导入时无法以低成本可靠探测每个文件的时长，
+      // so it reuses durations indexed by the system media library when present.
+      // 因此优先复用系统媒体库里已经建立好的时长索引。
       final knownDurations = await _loadKnownDurations();
       final tracks = result.files
           .where((file) => file.path != null)
@@ -305,6 +313,10 @@ class AudioImportService {
 
   Future<Map<String, int>> _loadKnownDurations() async {
     try {
+      // Normalize paths because picker/file-system paths and media-store paths
+      // 这里要先统一路径格式，
+      // may differ in case or separators while still pointing to the same file.
+      // 因为文件选择器路径和媒体库路径即使大小写或分隔符不同，也可能指向同一文件。
       final songs = await _audioQuery.querySongs(
         sortType: SongSortType.TITLE,
         orderType: OrderType.ASC_OR_SMALLER,
@@ -397,4 +409,3 @@ class AudioImportService {
     return openAppSettings();
   }
 }
-

@@ -110,6 +110,10 @@ class LibraryRepository {
       return _settingsFromValues(values);
     }
 
+    // Settings also live in a small JSON backup because app upgrades or DB
+    // 设置额外保存一份轻量 JSON 备份，
+    // resets are more common than the user losing their preferences.
+    // 因为相比用户主动丢失偏好，更常见的是升级或数据库被重建。
     final backupSettings = await _readSettingsBackup();
     if (backupSettings != null) {
       await saveSettings(backupSettings);
@@ -139,6 +143,10 @@ class LibraryRepository {
   }
 
   Future<StoredPlaybackState?> getStoredPlaybackState() async {
+    // Playback state shares the settings table to avoid another tiny table whose
+    // 播放状态复用 settings 表，
+    // rows are always read and written as one logical blob.
+    // 避免再为这种总是整体读写的数据单独建一张小表。
     final rows = await _database.query(_settingsTable);
     final values = <String, String>{};
     for (final row in rows) {
@@ -246,6 +254,10 @@ class LibraryRepository {
   }
 
   Future<void> _ensureSchema(Database db) async {
+    // Keep schema creation idempotent so init can safely run on both first boot
+    // 建表逻辑保持幂等，
+    // and subsequent launches without version-specific branching yet.
+    // 这样首次启动和后续启动都能安全执行，而不需要先引入版本分支逻辑。
     await db.execute('''
       CREATE TABLE IF NOT EXISTS $_tracksTable (
         path TEXT PRIMARY KEY,

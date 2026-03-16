@@ -131,6 +131,10 @@ class PlayerController extends ChangeNotifier {
     await _audioHandler.applySettings(_settings);
 
     _subscriptions
+      // Persist playback state from all three streams because each one can change
+      // 需要同时监听这三个流并持久化播放状态，因为它们的变化彼此独立。
+      // independently depending on how audio_service/just_audio emits updates.
+      // 具体会怎么变化取决于 audio_service/just_audio 的事件发射方式。
       ..add(_audioHandler.mediaItem.listen((item) {
         _currentMediaItem = item;
         _schedulePlaybackStateSave();
@@ -155,6 +159,8 @@ class PlayerController extends ChangeNotifier {
       }));
 
     try {
+      // Restore is time-bounded so a malformed cached queue cannot block startup.
+      // 恢复流程加上超时限制，避免损坏的缓存队列卡住启动过程。
       await _restoreStoredPlaybackState().timeout(const Duration(seconds: 3));
     } catch (_) {
       _activePlaylist = const [];
@@ -319,6 +325,10 @@ class PlayerController extends ChangeNotifier {
     if (index < 0 || index >= folderTracks.length) return;
 
     final playlist = List<AudioTrack>.unmodifiable(folderTracks);
+    // Only rebuild the queue when the folder selection actually changed, so
+    // 只有文件夹选择实际发生变化时才重建队列，
+    // tapping another item in the same folder keeps the current queue intact.
+    // 这样在同一文件夹里点其他条目时可以保留当前队列。
     final shouldResetQueue = !_isSamePlaylist(_activePlaylist, playlist);
     if (shouldResetQueue) {
       _activePlaylist = playlist;
@@ -479,6 +489,10 @@ class PlayerController extends ChangeNotifier {
     }
 
     if (_activePlaylist.isNotEmpty) {
+      // Rehydrate playlist entries from the latest library snapshot so title,
+      // 用最新的媒体库快照重新映射播放列表项，
+      // duration and artwork stay current after rescans or manual imports.
+      // 这样重扫或手动导入后，标题、时长和封面都能保持最新。
       final trackMap = {for (final track in _tracks) track.path: track};
       _activePlaylist = _activePlaylist
           .map((track) => trackMap[track.path])
@@ -513,6 +527,10 @@ class PlayerController extends ChangeNotifier {
       return;
     }
 
+    // Cached playlist paths may reference files that were deleted after the
+    // 缓存的播放列表路径可能指向上次会话后已经被删除的文件，
+    // last session, so restore only entries that still exist in the library.
+    // 因此恢复时只保留媒体库里仍然存在的条目。
     final trackMap = {for (final track in _tracks) track.path: track};
     final playlist = storedState.playlistPaths
         .map((path) => trackMap[path])
@@ -571,6 +589,10 @@ class PlayerController extends ChangeNotifier {
       return;
     }
 
+    // Position updates are high-frequency, so collapse them into one deferred
+    // 播放位置更新频率很高，因此要把它们合并成一次延迟写入，
+    // write instead of thrashing SQLite on every playback tick.
+    // 避免每次进度变化都去频繁写 SQLite。
     if (_playbackStateSaveTimer?.isActive ?? false) return;
     final delay =
         _playbackStateSaveInterval - DateTime.now().difference(lastSavedAt);
@@ -595,6 +617,10 @@ class PlayerController extends ChangeNotifier {
       return;
     }
 
+    // During app restore there may be no current MediaItem yet; keep the last
+    // 应用恢复阶段当前可能还没有可用的 MediaItem，
+    // intended track/position so PlayerScreen can finish restoration later.
+    // 所以先保留目标曲目和位置，交给 PlayerScreen 后续补完恢复。
     final resolvedTrackPath = _currentMediaItem?.id ?? _pendingRestoreTrackPath;
     final resolvedPositionMs = _currentMediaItem?.id == null &&
             _pendingRestoreTrackPath != null

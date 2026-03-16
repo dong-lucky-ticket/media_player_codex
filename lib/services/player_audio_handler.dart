@@ -20,6 +20,7 @@ class PlayerAudioHandler extends BaseAudioHandler
         await _handlePositionTick(position);
       } catch (_) {
         // Keep playback alive if auto-advance fails on malformed media.
+        // 即使损坏媒体导致自动切歌失败，也不要让整个播放流程中断。
       }
     });
   }
@@ -93,11 +94,19 @@ class PlayerAudioHandler extends BaseAudioHandler
             : 0);
     final shouldRestorePreviousPosition =
         restoredTrackId == null && hasRestorableSelection && preserveIndex;
+    // New queues start from skip-start so both explicit taps and restored queues
+    // 新队列默认从跳过片头后的时间点开始，
+    // obey the same listening behavior by default.
+    // 这样手动点播和恢复出来的队列都会遵循同一套收听规则。
     final initialPosition = shouldRestorePreviousPosition
         ? previousPosition
         : restoredPosition ?? Duration(seconds: _skipStartSec);
     final shouldResumePlayback = restoredPlaying ?? wasPlaying;
 
+    // When the queue is only prepared for later playback, hide the implicit
+    // 当队列只是预加载、暂时还不会播放时，
+    // first item selection from the UI until the user explicitly starts playing.
+    // 就先不要把隐式选中的第一项暴露给 UI，直到用户明确点击播放。
     _suppressImplicitSelection = !shouldResumePlayback &&
         !hasRestorableSelection &&
         !selectFirstWhenIdle;
@@ -304,6 +313,10 @@ class PlayerAudioHandler extends BaseAudioHandler
   }
 
   void _handleCurrentIndexChanged(int? index) {
+    // Emit completion before switching the exposed MediaItem so the controller
+    // 要先发出完成事件，再切换对外暴露的 MediaItem，
+    // can still attribute the finished mark to the previous track.
+    // 这样控制器才能把已播完标记准确记到上一首。
     final previousItem = mediaItem.value;
     if (previousItem != null &&
         _didReachCompletionPoint(previousItem, _lastObservedPosition)) {
@@ -351,6 +364,8 @@ class PlayerAudioHandler extends BaseAudioHandler
       return;
     }
 
+    // Auto-advance slightly before the real end to honor the configured tail skip.
+    // 在真正播放结束前一点点就提前切歌，以兑现跳过片尾的配置。
     final endLimit = currentDuration - Duration(seconds: _skipEndSec);
     if (position < endLimit) return;
 
@@ -379,6 +394,10 @@ class PlayerAudioHandler extends BaseAudioHandler
     final currentDuration = mediaItem.value?.duration ?? _player.duration;
     if (currentDuration != null && currentDuration <= currentPosition) return;
 
+    // just_audio can advance to the next item without going through playFromIndex,
+    // just_audio 可能直接隐式切到下一首，而不会经过 playFromIndex，
+    // so start-skip must also be enforced during implicit transitions here.
+    // 所以这里也必须补上片头跳过逻辑。
     _isApplyingStartSkip = true;
     try {
       await _player.seek(Duration(seconds: _skipStartSec), index: index);
@@ -386,6 +405,7 @@ class PlayerAudioHandler extends BaseAudioHandler
       _publishCurrentSelectionFromPlayer();
     } catch (_) {
       // Ignore best-effort skip failures during implicit transitions.
+      // 隐式切换期间的片头跳过只是尽力而为，失败时直接忽略。
     } finally {
       _isApplyingStartSkip = false;
     }
@@ -403,6 +423,7 @@ class PlayerAudioHandler extends BaseAudioHandler
       await _player.play();
     } catch (_) {
       // Ignore transition errors to avoid app crash on bad files.
+      // 为避免坏文件触发崩溃，切换失败时直接吞掉异常。
     }
   }
 
@@ -413,6 +434,10 @@ class PlayerAudioHandler extends BaseAudioHandler
     required bool wasPlaying,
   }) async {
     final queueLength = queue.value.length;
+    // A bad file should not destroy the existing playback context if we can
+    // 如果还能回到上一首有效媒体，就不要因为坏文件把当前播放上下文清空。
+    // still seek back to the previous valid item.
+    // 能恢复到之前可播放的条目时，应优先恢复。
     if (previousIndex != null &&
         previousIndex >= 0 &&
         previousIndex < queueLength &&
@@ -428,6 +453,7 @@ class PlayerAudioHandler extends BaseAudioHandler
         return;
       } catch (_) {
         // Fall through to hard reset below.
+        // 如果恢复失败，再继续走下面的硬重置兜底逻辑。
       }
     }
 
@@ -435,6 +461,7 @@ class PlayerAudioHandler extends BaseAudioHandler
       await _player.stop();
     } catch (_) {
       // Ignore stop errors during recovery.
+      // 恢复阶段即使 stop 失败也不再继续抛错。
     }
     mediaItem.add(null);
     _broadcastState();
