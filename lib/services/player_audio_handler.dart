@@ -54,6 +54,25 @@ class PlayerAudioHandler extends BaseAudioHandler
 
   Stream<String> get completedTrackStream => _completedTrackController.stream;
 
+  // Touch player state and publish a fresh snapshot so foreground recovery can verify the bridge is alive.
+  // 主动触达播放器状态并重新发布快照，供前台恢复时确认桥接链路仍然可用。
+  Future<void> performHealthCheck() async {
+    final queueLength = queue.value.length;
+    final currentIndex = _player.currentIndex;
+    final _ = _player.processingState;
+    final __ = _player.playing;
+    final ___ = _player.position;
+
+    if (currentIndex != null &&
+        currentIndex >= 0 &&
+        currentIndex < queueLength &&
+        !_suppressImplicitSelection) {
+      _publishCurrentSelectionFromPlayer();
+    } else {
+      _broadcastState();
+    }
+  }
+
   Future<void> setTracks(
     List<AudioTrack> tracks, {
     bool preserveIndex = true,

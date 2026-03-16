@@ -207,6 +207,18 @@ class PlayerController extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Probe lightweight dependencies that should always respond when the app is healthy.
+  // 探测健康状态下应该始终能响应的轻量依赖。
+  Future<bool> performForegroundHealthCheck() async {
+    try {
+      await _repository.getSettings();
+      await _audioHandler.performHealthCheck();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<void> runAutoScan() async {
     if (_scanInProgress || _isBusy) return;
 
