@@ -515,6 +515,9 @@ class PlayerController extends ChangeNotifier {
   }
 
   Future<void> _reloadTracks() async {
+    final previousCurrentTrackPath = _currentMediaItem?.id;
+    final previousPlaylistIndex = currentPlaylistIndex;
+
     _tracks = await _repository.getAllTracks();
     final activePaths = _tracks.map((track) => track.path).toSet();
     final previousUnplayableCount = _unplayablePaths.length;
@@ -523,11 +526,12 @@ class PlayerController extends ChangeNotifier {
       _unplayableVersion += 1;
     }
 
+    String? preferredTrackPath;
     if (_activePlaylist.isNotEmpty) {
       // Rehydrate playlist entries from the latest library snapshot so title,
-      // 用最新的媒体库快照重新映射播放列表项，
+      // 鐢ㄦ渶鏂扮殑濯掍綋搴撳揩鐓ч噸鏂版槧灏勬挱鏀惧垪琛ㄩ」锛?
       // duration and artwork stay current after rescans or manual imports.
-      // 这样重扫或手动导入后，标题、时长和封面都能保持最新。
+      // 杩欐牱閲嶆壂鎴栨墜鍔ㄥ鍏ュ悗锛屾爣棰樸€佹椂闀垮拰灏侀潰閮借兘淇濇寔鏈€鏂般€?
       final trackMap = {for (final track in _tracks) track.path: track};
       _activePlaylist = _activePlaylist
           .map((track) => trackMap[track.path])
@@ -536,9 +540,25 @@ class PlayerController extends ChangeNotifier {
       _playedPlaylistPaths.removeWhere(
         (path) => !_activePlaylist.any((track) => track.path == path),
       );
+
+      if (previousCurrentTrackPath != null) {
+        final currentStillExists = _activePlaylist
+            .any((track) => track.path == previousCurrentTrackPath);
+        if (currentStillExists) {
+          preferredTrackPath = previousCurrentTrackPath;
+        } else if (previousPlaylistIndex != null &&
+            _activePlaylist.isNotEmpty) {
+          final fallbackIndex =
+              previousPlaylistIndex.clamp(0, _activePlaylist.length - 1);
+          preferredTrackPath = _activePlaylist[fallbackIndex].path;
+        }
+      }
     }
 
-    await _audioHandler.setTracks(_activePlaylist);
+    await _audioHandler.setTracks(
+      _activePlaylist,
+      restoredTrackId: preferredTrackPath,
+    );
     await _savePlaybackState(force: true);
     notifyListeners();
   }
