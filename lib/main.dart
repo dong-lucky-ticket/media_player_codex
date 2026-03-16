@@ -7,15 +7,13 @@ import 'controllers/player_controller.dart';
 import 'repositories/library_repository.dart';
 import 'services/audio_import_service.dart';
 import 'services/player_audio_handler.dart';
-import 'ui/screens/home_screen.dart';
+import 'ui/screens/bootstrap_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // The repository and audio handler must be ready before the widget tree starts,
-  // 必须先完成仓库和音频处理器初始化，再启动组件树，
-  // otherwise the first frame may render against incomplete persisted state.
-  // 否则首帧可能会基于不完整的持久化状态渲染。
+  // Initialize persistent dependencies before building the widget tree.
+  // 在构建组件树之前先初始化持久化依赖。
   final repository = LibraryRepository();
   await repository.init();
 
@@ -28,10 +26,9 @@ Future<void> main() async {
     importService: importService,
   );
 
+  // BootstrapScreen will finish controller initialization and decide when HomeScreen can appear.
+  // BootstrapScreen 会完成控制器初始化，并决定何时展示 HomeScreen。
   runApp(PlayerApp(controller: controller));
-  // App startup should not be blocked by state restoration and stream wiring.
-  // 应用启动不应被状态恢复和流订阅绑定阻塞。
-  unawaited(controller.init());
 }
 
 class PlayerApp extends StatelessWidget {
@@ -50,7 +47,7 @@ class PlayerApp extends StatelessWidget {
           colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
           useMaterial3: true,
         ),
-        home: const HomeScreen(),
+        home: const BootstrapScreen(),
       ),
     );
   }

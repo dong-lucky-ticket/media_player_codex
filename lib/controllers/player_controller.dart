@@ -62,6 +62,8 @@ class PlayerController extends ChangeNotifier {
   int _pendingRestorePositionMs = 0;
   Timer? _playbackStateSaveTimer;
   DateTime? _lastPlaybackStateSavedAt;
+  Future<void>? _initFuture;
+  bool _audioStreamsBound = false;
 
   static const _playbackStateSaveInterval = Duration(seconds: 2);
 
@@ -119,59 +121,85 @@ class PlayerController extends ChangeNotifier {
     return _tracks[index];
   }
 
-  Future<void> init() async {
-    _settings = await _repository.getSettings();
-    _permissionState = await _importService.getPermissionGuideState();
-    _tracks = await _repository.getAllTracks();
+  // Keep initialization idempotent so re-entering the bootstrap flow does not bind streams twice.
+  // 保持初始化幂等，避免重新进入启动流程时重复绑定流。
+  Future<void> init() {
+    final pending = _initFuture;
+    if (pending != null) return pending;
 
-    if (_tracks.isEmpty && !_permissionState.scanAvailable) {
-      _pushNotice(_permissionState.summary, isError: true);
-    }
+    final future = _initImpl();
+    _initFuture = future;
+    return future;
+  }
 
-    await _audioHandler.applySettings(_settings);
-
-    _subscriptions
-      // Persist playback state from all three streams because each one can change
-      // 需要同时监听这三个流并持久化播放状态，因为它们的变化彼此独立。
-      // independently depending on how audio_service/just_audio emits updates.
-      // 具体会怎么变化取决于 audio_service/just_audio 的事件发射方式。
-      ..add(_audioHandler.mediaItem.listen((item) {
-        _currentMediaItem = item;
-        _schedulePlaybackStateSave();
-        notifyListeners();
-      }))
-      ..add(_audioHandler.playbackState.listen((state) {
-        _playbackState = state;
-        _schedulePlaybackStateSave();
-        notifyListeners();
-      }))
-      ..add(_audioHandler.positionStream.listen((position) {
-        _position = position;
-        _schedulePlaybackStateSave();
-        notifyListeners();
-      }))
-      ..add(_audioHandler.completedTrackStream.listen((path) {
-        if (_playedPlaylistPaths.add(path)) {
-          _playedPlaylistVersion += 1;
-          unawaited(_savePlaybackState(force: true));
-        }
-        notifyListeners();
-      }));
-
+  // Run the real startup sequence once and cache the resulting Future in init().
+  // 真正的启动流程只执行一次，并由 init() 缓存返回的 Future。
+  Future<void> _initImpl() async {
     try {
-      // Restore is time-bounded so a malformed cached queue cannot block startup.
-      // 恢复流程加上超时限制，避免损坏的缓存队列卡住启动过程。
-      await _restoreStoredPlaybackState().timeout(const Duration(seconds: 3));
+      _settings = await _repository.getSettings();
+      _permissionState = await _importService.getPermissionGuideState();
+      _tracks = await _repository.getAllTracks();
+
+      if (_tracks.isEmpty && !_permissionState.scanAvailable) {
+        _pushNotice(_permissionState.summary, isError: true);
+      }
+
+      await _audioHandler.applySettings(_settings);
+
+      // Audio streams are wired once because they live for the entire app session.
+      // 音频流只绑定一次，因为它们会贯穿整个应用会话。
+      if (!_audioStreamsBound) {
+        _audioStreamsBound = true;
+        _subscriptions
+          // Persist playback state from all three streams because each one can change
+          // 需要同时监听这三个流并持久化播放状态，因为它们的变化彼此独立。
+          // independently depending on how audio_service/just_audio emits updates.
+          // 具体会怎么变化取决于 audio_service/just_audio 的事件发射方式。
+          ..add(_audioHandler.mediaItem.listen((item) {
+            _currentMediaItem = item;
+            _schedulePlaybackStateSave();
+            notifyListeners();
+          }))
+          ..add(_audioHandler.playbackState.listen((state) {
+            _playbackState = state;
+            _schedulePlaybackStateSave();
+            notifyListeners();
+          }))
+          ..add(_audioHandler.positionStream.listen((position) {
+            _position = position;
+            _schedulePlaybackStateSave();
+            notifyListeners();
+          }))
+          ..add(_audioHandler.completedTrackStream.listen((path) {
+            if (_playedPlaylistPaths.add(path)) {
+              _playedPlaylistVersion += 1;
+              unawaited(_savePlaybackState(force: true));
+            }
+            notifyListeners();
+          }));
+      }
+
+      try {
+        // Restore is time-bounded so a malformed cached queue cannot block startup.
+        // 恢复流程加上超时限制，避免损坏的缓存队列卡住启动过程。
+        await _restoreStoredPlaybackState().timeout(const Duration(seconds: 3));
+      } catch (_) {
+        // Drop broken cached playback state instead of blocking the whole app launch.
+        // 缓存播放状态损坏时直接丢弃，避免整个应用启动被卡住。
+        _activePlaylist = const [];
+        _pendingRestoreTrackPath = null;
+        _pendingRestorePositionMs = 0;
+        await _repository.clearStoredPlaybackState();
+        await _audioHandler.setTracks(_activePlaylist, preserveIndex: false);
+        _pushNotice('启动时恢复播放列表失败，已跳过缓存恢复。', isError: true);
+      }
+      notifyListeners();
     } catch (_) {
-      _activePlaylist = const [];
-      _pendingRestoreTrackPath = null;
-      _pendingRestorePositionMs = 0;
-      await _repository.clearStoredPlaybackState();
-      await _audioHandler.setTracks(_activePlaylist, preserveIndex: false);
-      _pushNotice('启动时恢复播放列表失败，已跳过缓存恢复。',
-          isError: true);
+      // Allow a later retry if startup fails before the controller reaches a stable state.
+      // 如果启动在进入稳定状态前失败，允许后续再次重试。
+      _initFuture = null;
+      rethrow;
     }
-    notifyListeners();
   }
 
   void setSearchText(String value) {
@@ -292,9 +320,7 @@ class PlayerController extends ChangeNotifier {
   Future<void> openSystemSettings() async {
     final opened = await _importService.openPermissionSettings();
     _pushNotice(
-      opened
-          ? '已打开系统设置，请授权后返回应用并刷新状态。'
-          : '无法打开系统设置，请手动前往设置授权。',
+      opened ? '已打开系统设置，请授权后返回应用并刷新状态。' : '无法打开系统设置，请手动前往设置授权。',
       isError: !opened,
     );
   }
@@ -382,8 +408,7 @@ class PlayerController extends ChangeNotifier {
 
     final track = _activePlaylist[index];
     if (_unplayablePaths.contains(track.path)) {
-      _pushNotice('该音频此前播放失败，请长按查看详情或移除该文件。',
-          isError: true);
+      _pushNotice('该音频此前播放失败，请长按查看详情或移除该文件。', isError: true);
       return;
     }
 
@@ -401,9 +426,7 @@ class PlayerController extends ChangeNotifier {
     if (_unplayablePaths.add(track.path)) {
       _unplayableVersion += 1;
     }
-    _pushNotice(
-        '该音频无法正常播放，可能文件已损坏或格式不受支持。',
-        isError: true);
+    _pushNotice('该音频无法正常播放，可能文件已损坏或格式不受支持。', isError: true);
   }
 
   Future<void> removeTrackFromActivePlaylist(int index) async {
@@ -622,10 +645,10 @@ class PlayerController extends ChangeNotifier {
     // intended track/position so PlayerScreen can finish restoration later.
     // 所以先保留目标曲目和位置，交给 PlayerScreen 后续补完恢复。
     final resolvedTrackPath = _currentMediaItem?.id ?? _pendingRestoreTrackPath;
-    final resolvedPositionMs = _currentMediaItem?.id == null &&
-            _pendingRestoreTrackPath != null
-        ? _pendingRestorePositionMs
-        : (_position.inMilliseconds < 0 ? 0 : _position.inMilliseconds);
+    final resolvedPositionMs =
+        _currentMediaItem?.id == null && _pendingRestoreTrackPath != null
+            ? _pendingRestorePositionMs
+            : (_position.inMilliseconds < 0 ? 0 : _position.inMilliseconds);
 
     await _repository.saveStoredPlaybackState(
       StoredPlaybackState(
