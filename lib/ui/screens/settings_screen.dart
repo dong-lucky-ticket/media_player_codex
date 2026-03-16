@@ -22,7 +22,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _startController = TextEditingController();
   final _endController = TextEditingController();
   final _minDurationController = TextEditingController();
-  bool _initialized = false;
+
+  int? _lastSkipStartSec;
+  int? _lastSkipEndSec;
+  int? _lastMinScanDurationSec;
 
   @override
   void dispose() {
@@ -32,27 +35,42 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.dispose();
   }
 
+  void _syncControllersWithSettings(PlayerSettings settings) {
+    if (_lastSkipStartSec != settings.skipStartSec) {
+      _startController.text = settings.skipStartSec.toString();
+      _lastSkipStartSec = settings.skipStartSec;
+    }
+    if (_lastSkipEndSec != settings.skipEndSec) {
+      _endController.text = settings.skipEndSec.toString();
+      _lastSkipEndSec = settings.skipEndSec;
+    }
+    if (_lastMinScanDurationSec != settings.minScanDurationSec) {
+      _minDurationController.text = settings.minScanDurationSec.toString();
+      _lastMinScanDurationSec = settings.minScanDurationSec;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final controller = context.watch<PlayerController>();
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
-    if (!_initialized) {
-      _initialized = true;
-      _startController.text = controller.settings.skipStartSec.toString();
-      _endController.text = controller.settings.skipEndSec.toString();
-      _minDurationController.text = controller.settings.minScanDurationSec.toString();
-    }
+    _syncControllersWithSettings(controller.settings);
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
+      padding: EdgeInsets.fromLTRB(
+        12,
+        12,
+        12,
+        16 + widget.bottomOverlayHeight,
+      ),
       children: [
         _buildSectionCard(
           context,
           icon: Icons.skip_next_rounded,
           title: '跳过设置',
-          subtitle: '控制音频开始和结束时需要跳过的秒数',
+          subtitle: '控制音频开始和结束时自动跳过的秒数。',
           child: Column(
             children: [
               Row(
@@ -63,6 +81,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       controller: _startController,
                       label: '开头跳过',
                       hint: '0',
+                      suffixText: '秒',
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -72,6 +91,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       controller: _endController,
                       label: '结尾跳过',
                       hint: '0',
+                      suffixText: '秒',
                     ),
                   ),
                 ],
@@ -81,7 +101,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 width: double.infinity,
                 child: FilledButton.tonalIcon(
                   onPressed: () async {
-                    final start = int.tryParse(_startController.text.trim()) ?? 0;
+                    final start =
+                        int.tryParse(_startController.text.trim()) ?? 0;
                     final end = int.tryParse(_endController.text.trim()) ?? 0;
                     await controller.updateSkipSettings(
                       skipStartSec: start.clamp(0, 3600),
@@ -90,7 +111,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     if (!mounted) return;
                     showAppSnackBar(
                       context,
-                      message: '跳过设置已保存',
+                      message: '跳过设置已保存。',
                       isError: false,
                     );
                   },
@@ -115,7 +136,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           context,
           icon: Icons.filter_alt_outlined,
           title: '扫描过滤',
-          subtitle: '扫描时忽略时长低于设定值的音频文件，单位为秒',
+          subtitle: '扫描时忽略时长低于阈值的音频文件。',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -128,7 +149,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               const SizedBox(height: 8),
               Text(
-                '设为 0 表示不过滤。系统媒体库扫描会严格按时长过滤；手动导入会优先使用已知媒体时长进行过滤。',
+                '设为 0 表示不过滤。系统媒体库扫描和手动导入都会按这个阈值过滤音频。',
                 style: theme.textTheme.bodySmall?.copyWith(
                   height: 1.45,
                   color: scheme.onSurfaceVariant,
@@ -139,17 +160,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 width: double.infinity,
                 child: FilledButton.tonalIcon(
                   onPressed: () async {
-                    final seconds = int.tryParse(_minDurationController.text.trim()) ?? 0;
-                    await controller.updateMinScanDuration(seconds.clamp(0, 3600));
+                    final seconds =
+                        int.tryParse(_minDurationController.text.trim()) ?? 0;
+                    await controller
+                        .updateMinScanDuration(seconds.clamp(0, 3600));
                     if (!mounted) return;
                     showAppSnackBar(
                       context,
-                      message: '扫描过滤条件已保存',
+                      message: '扫描过滤已保存。',
                       isError: false,
                     );
                   },
                   icon: const Icon(Icons.tune_rounded, size: 18),
-                  label: const Text('保存过滤条件'),
+                  label: const Text('保存过滤设置'),
                   style: FilledButton.styleFrom(
                     minimumSize: const Size.fromHeight(42),
                     elevation: 0,
@@ -169,7 +192,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           context,
           icon: Icons.repeat_rounded,
           title: '循环模式',
-          subtitle: '选择列表播放时的默认循环方式',
+          subtitle: '选择播放列表默认的循环方式。',
           child: DropdownButtonFormField<RepeatModeType>(
             value: controller.settings.repeatMode,
             decoration: InputDecoration(
@@ -355,7 +378,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                '跳过设置会在播放时自动生效。扫描过滤只影响新的扫描和导入，不会自动移除列表里已有的音频。',
+                '跳过设置会在播放时自动生效。扫描过滤只影响新的扫描和导入，不会自动移除已在列表中的音频。',
                 style: theme.textTheme.bodySmall?.copyWith(
                   height: 1.45,
                   color: scheme.onPrimaryContainer,
@@ -368,12 +391,3 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 }
-
-
-
-
-
-
-
-
-
