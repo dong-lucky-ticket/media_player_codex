@@ -117,9 +117,10 @@ class PlayerAudioHandler extends BaseAudioHandler
     // 新队列默认从跳过片头后的时间点开始，
     // obey the same listening behavior by default.
     // 这样手动点播和恢复出来的队列都会遵循同一套收听规则。
+    final initialDuration = items.isEmpty ? null : items[initialIndex].duration;
     final initialPosition = shouldRestorePreviousPosition
         ? previousPosition
-        : restoredPosition ?? Duration(seconds: _skipStartSec);
+        : restoredPosition ?? _resolveStartPosition(initialDuration);
     final shouldResumePlayback = restoredPlaying ?? wasPlaying;
 
     // When the queue is only prepared for later playback, hide the implicit
@@ -184,10 +185,18 @@ class PlayerAudioHandler extends BaseAudioHandler
   }
 
   @override
-  Future<void> play() {
+  Future<void> play() async {
     _suppressImplicitSelection = false;
+    final currentIndex = _player.currentIndex;
+    if (currentIndex != null &&
+        await _handleShortTrackAtIndex(
+          currentIndex,
+          shouldPlayAfterSkip: true,
+        )) {
+      return;
+    }
     _publishCurrentSelectionFromPlayer();
-    return _player.play();
+    await _player.play();
   }
 
   Future<void> setPlaybackSpeed(double speed) async {
@@ -208,7 +217,13 @@ class PlayerAudioHandler extends BaseAudioHandler
 
     _suppressImplicitSelection = false;
     try {
-      await _player.seek(Duration(seconds: _skipStartSec), index: index);
+      if (await _handleShortTrackAtIndex(index, shouldPlayAfterSkip: true)) {
+        return true;
+      }
+      await _player.seek(
+        _resolveStartPosition(_durationForQueueIndex(index)),
+        index: index,
+      );
       _publishCurrentSelectionFromPlayer();
       await _player.play();
       return true;
@@ -342,7 +357,9 @@ class PlayerAudioHandler extends BaseAudioHandler
       _emitCompletedTrack(previousItem.id);
     }
     _updateCurrentMediaItem(index);
-    unawaited(_ensureSkipStartForImplicitAdvance(index));
+    scheduleMicrotask(() {
+      unawaited(_ensureSkipStartForImplicitAdvance(index));
+    });
   }
 
   void _updateCurrentMediaItem(int? index) {
@@ -392,7 +409,15 @@ class PlayerAudioHandler extends BaseAudioHandler
     try {
       _emitCompletedCurrentTrack();
       if (_repeatMode == RepeatModeType.single) {
-        await _player.seek(Duration(seconds: _skipStartSec));
+        final currentIndex = _player.currentIndex;
+        if (currentIndex != null &&
+            await _handleShortTrackAtIndex(
+              currentIndex,
+              shouldPlayAfterSkip: true,
+            )) {
+          return;
+        }
+        await _player.seek(_resolveStartPosition(currentDuration));
         await _player.play();
       } else {
         await skipToNext();
@@ -408,9 +433,12 @@ class PlayerAudioHandler extends BaseAudioHandler
     if (index == null || index < 0 || index >= queue.value.length) return;
 
     final currentPosition = _player.position;
-    if (currentPosition >= Duration(seconds: _skipStartSec)) return;
-
     final currentDuration = mediaItem.value?.duration ?? _player.duration;
+    if (await _handleShortTrackAtIndex(index, shouldPlayAfterSkip: true)) {
+      return;
+    }
+    final targetPosition = _resolveStartPosition(currentDuration);
+    if (currentPosition >= targetPosition) return;
     if (currentDuration != null && currentDuration <= currentPosition) return;
 
     // just_audio can advance to the next item without going through playFromIndex,
@@ -419,7 +447,10 @@ class PlayerAudioHandler extends BaseAudioHandler
     // 所以这里也必须补上片头跳过逻辑。
     _isApplyingStartSkip = true;
     try {
-      await _player.seek(Duration(seconds: _skipStartSec), index: index);
+      await _player.seek(
+        _resolveStartPosition(_durationForQueueIndex(index)),
+        index: index,
+      );
       _lastObservedPosition = _player.position;
       _publishCurrentSelectionFromPlayer();
     } catch (_) {
@@ -437,7 +468,13 @@ class PlayerAudioHandler extends BaseAudioHandler
 
     try {
       _suppressImplicitSelection = false;
-      await _player.seek(Duration(seconds: _skipStartSec), index: index);
+      if (await _handleShortTrackAtIndex(index, shouldPlayAfterSkip: true)) {
+        return;
+      }
+      await _player.seek(
+        _resolveStartPosition(_durationForQueueIndex(index)),
+        index: index,
+      );
       _publishCurrentSelectionFromPlayer();
       await _player.play();
     } catch (_) {
@@ -501,7 +538,10 @@ class PlayerAudioHandler extends BaseAudioHandler
   void _emitCompletedTrack(String? trackId) {
     if (trackId == null || _lastCompletedTrackId == trackId) return;
     _lastCompletedTrackId = trackId;
-    _completedTrackController.add(trackId);
+    scheduleMicrotask(() {
+      if (_completedTrackController.isClosed) return;
+      _completedTrackController.add(trackId);
+    });
   }
 
   void _emitCompletedCurrentTrack() {
@@ -517,6 +557,80 @@ class PlayerAudioHandler extends BaseAudioHandler
 
   Duration get position => _player.position;
   Stream<Duration> get positionStream => _player.positionStream;
+
+  // Skip tracks that are shorter than the configured start-skip window instead of seeking into an invalid start position.
+  // 当音频时长短于设定的片头跳过窗口时，直接跳过它，而不是 seek 到无效起播位置。
+  Future<bool> _handleShortTrackAtIndex(
+    int index, {
+    required bool shouldPlayAfterSkip,
+  }) async {
+    final duration = _durationForQueueIndex(index);
+    if (!_shouldSkipTrack(duration)) return false;
+
+    _emitCompletedTrack(queue.value[index].id);
+    final nextIndex = _findNextPlayableIndex(index);
+    if (nextIndex == null) {
+      await _player.stop();
+      mediaItem.add(null);
+      _broadcastState();
+      return true;
+    }
+
+    _suppressImplicitSelection = false;
+    await _player.seek(
+      _resolveStartPosition(_durationForQueueIndex(nextIndex)),
+      index: nextIndex,
+    );
+    _publishCurrentSelectionFromPlayer();
+    if (shouldPlayAfterSkip) {
+      await _player.play();
+    } else {
+      await _player.pause();
+    }
+    return true;
+  }
+
+  // Continue scanning forward until a playable track is found so several short clips in a row do not stall playback.
+  // 持续向后扫描直到找到可播放条目，避免连续多个短音频把播放流程卡住。
+  int? _findNextPlayableIndex(int currentIndex) {
+    final queueLength = queue.value.length;
+    if (queueLength <= 1) return null;
+
+    final allowWrap = _repeatMode == RepeatModeType.listLoop ||
+        _repeatMode == RepeatModeType.shuffle;
+    final maxSteps =
+        allowWrap ? queueLength - 1 : queueLength - currentIndex - 1;
+    if (maxSteps <= 0) return null;
+
+    for (var step = 1; step <= maxSteps; step++) {
+      final candidate = (currentIndex + step) % queueLength;
+      if (!_shouldSkipTrack(_durationForQueueIndex(candidate))) {
+        return candidate;
+      }
+      _emitCompletedTrack(queue.value[candidate].id);
+    }
+    return null;
+  }
+
+  Duration? _durationForQueueIndex(int index) {
+    if (index < 0 || index >= queue.value.length) return null;
+    return queue.value[index].duration;
+  }
+
+  bool _shouldSkipTrack(Duration? duration) {
+    final skipStart = Duration(seconds: _skipStartSec);
+    if (skipStart <= Duration.zero) return false;
+    if (duration == null || duration <= Duration.zero) return false;
+    return duration <= skipStart;
+  }
+
+  Duration _resolveStartPosition(Duration? duration) {
+    final skipStart = Duration(seconds: _skipStartSec);
+    if (skipStart <= Duration.zero) return Duration.zero;
+    if (duration == null || duration <= Duration.zero) return skipStart;
+    if (duration <= skipStart) return Duration.zero;
+    return skipStart;
+  }
 
   @override
   Future<void> stop() async {
