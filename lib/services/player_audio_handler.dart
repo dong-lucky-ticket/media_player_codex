@@ -1,11 +1,12 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:audio_service/audio_service.dart';
 import 'package:just_audio/just_audio.dart';
 
 import '../models/audio_track.dart';
 
-class PlayerAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
+class PlayerAudioHandler extends BaseAudioHandler
+    with QueueHandler, SeekHandler {
   static final Uri _fallbackArtUri =
       Uri.parse('android.resource://com.example.player/mipmap/ic_launcher');
 
@@ -66,7 +67,9 @@ class PlayerAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
             title: track.title,
             artist: track.artist,
             album: track.album,
-            duration: track.durationMs > 0 ? Duration(milliseconds: track.durationMs) : null,
+            duration: track.durationMs > 0
+                ? Duration(milliseconds: track.durationMs)
+                : null,
             artUri: _mediaArtUriForTrack(track),
             extras: {'path': track.path},
           ),
@@ -80,7 +83,9 @@ class PlayerAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
     final hasRestorableSelection = locatedIndex >= 0;
     final initialIndex = items.isEmpty
         ? 0
-        : (hasRestorableSelection ? locatedIndex.clamp(0, items.length - 1) : 0);
+        : (hasRestorableSelection
+            ? locatedIndex.clamp(0, items.length - 1)
+            : 0);
     final shouldRestorePosition = hasRestorableSelection && preserveIndex;
     final initialPosition = shouldRestorePosition
         ? previousPosition
@@ -157,7 +162,6 @@ class PlayerAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
   @override
   Future<void> pause() => _player.pause();
 
-
   @override
   Future<void> seek(Duration position) => _player.seek(position);
 
@@ -194,12 +198,16 @@ class PlayerAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
     if (queueLength == 0) return;
 
     final nextIndex = _player.nextIndex;
-    if (_player.hasNext && nextIndex != null && nextIndex >= 0 && nextIndex < queueLength) {
+    if (_player.hasNext &&
+        nextIndex != null &&
+        nextIndex >= 0 &&
+        nextIndex < queueLength) {
       await _safeSeekAndPlay(nextIndex);
       return;
     }
 
-    if (_repeatMode == RepeatModeType.listLoop || _repeatMode == RepeatModeType.shuffle) {
+    if (_repeatMode == RepeatModeType.listLoop ||
+        _repeatMode == RepeatModeType.shuffle) {
       await _safeSeekAndPlay(0);
     }
   }
@@ -208,12 +216,6 @@ class PlayerAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
   Future<void> skipToPrevious() async {
     final queueLength = queue.value.length;
     if (queueLength == 0) return;
-
-    final position = _player.position;
-    if (position.inSeconds > 3) {
-      await _player.seek(Duration(seconds: _skipStartSec));
-      return;
-    }
 
     final previousIndex = _player.previousIndex;
     if (_player.hasPrevious &&
@@ -295,7 +297,8 @@ class PlayerAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
 
   void _handleCurrentIndexChanged(int? index) {
     final previousItem = mediaItem.value;
-    if (previousItem != null && _didReachCompletionPoint(previousItem, _lastObservedPosition)) {
+    if (previousItem != null &&
+        _didReachCompletionPoint(previousItem, _lastObservedPosition)) {
       _emitCompletedTrack(previousItem.id);
     }
     _updateCurrentMediaItem(index);
@@ -335,7 +338,9 @@ class PlayerAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
     if (_player.processingState != ProcessingState.ready) return;
 
     final currentDuration = mediaItem.value?.duration ?? _player.duration;
-    if (currentDuration == null || currentDuration.inSeconds <= _skipEndSec) return;
+    if (currentDuration == null || currentDuration.inSeconds <= _skipEndSec) {
+      return;
+    }
 
     final endLimit = currentDuration - Duration(seconds: _skipEndSec);
     if (position < endLimit) return;
@@ -442,12 +447,4 @@ class PlayerAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler
     await _player.stop();
     await super.stop();
   }
-
 }
-
-
-
-
-
-
-
