@@ -38,7 +38,7 @@ class PlayerApp extends StatelessWidget {
     return ChangeNotifierProvider<PlayerController>.value(
       value: controller,
       child: MaterialApp(
-        title: 'Local Audio Player',
+        title: '本地音频播放器',
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
           colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
